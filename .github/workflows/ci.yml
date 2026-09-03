@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Tier 1 - lint. Meaningful for all 20 days, every commit.
+  lint:
+    name: lint (all 20 days)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n every script
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "syntax error: $f"; fail=1; }
+          done < <(find . -name '*.sh' -type f)
+          exit "$fail"
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          find . -name '*.sh' -type f -print0 | xargs -0 -r shellcheck -x -S warning
+
+  # Tier 2 - days a GitHub runner can genuinely execute. Runners are full
+  # Ubuntu VMs with sudo, so namespaces, DNS, tcpdump, openssl and
+  # LVM-on-loopback are all real here.
+  verifiable-days:
+    name: verify day ${{ matrix.day }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        day: ["04", "06", "07", "08", "09", "10", "18"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install what these days need
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq iproute2 iputils-ping dnsutils unbound \
+            tcpdump lvm2 openssl acl vlan
+
+      - name: run the day
+        run: sudo bash lab/ci-day.sh ${{ matrix.day }}
+
+  # Tier 3 - state plainly what CI did not prove.
+  coverage:
+    name: coverage note
+    runs-on: ubuntu-latest
+    needs: [lint, verifiable-days]
+    if: always()
+    steps:
+      - name: what this run does and does not prove
+        run: |
+          cat <<'NOTE'
+          Proven here:
+            - all 20 days: shell syntax and shellcheck
+            - days 04 06 07 08 09 10 18: executed for real on an Ubuntu runner
+
+          NOT proven here, and not provable here:
+            - day 13         SELinux: no SELinux on GitHub runners
+            - day 11         firewalld: RHEL-family front end
+            - days 01 03 05  systemd units and journald configuration
+            - day 02         users, sudo and ACLs
+            - day 12         sshd hardening and fail2ban
+            - days 14 15     Ansible over SSH to two hosts
+            - days 16 17 19 20  VPN, TLS proxy, IDS, backup and restore
+
+          Those 13 days are verified by running days/dayNN/verify.sh on your
+          own lab. A green tick on this workflow never means a day works.
+          NOTE

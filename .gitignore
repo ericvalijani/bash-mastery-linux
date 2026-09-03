@@ -1,0 +1,33 @@
+# lab artefacts never belong in git
+*.qcow2
+*.img
+*.iso
+images/
+disks/
+seed/
+
+# cloud-init seeds contain your public key and hostnames
+user-data
+meta-data
+
+# captures can be large and can contain real traffic
+*.pcap
+*.pcapng
+
+# keys and certificates, including the Day 10 private CA
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+ca/
+
+# ansible
+*.retry
+.vault_pass
+vault-password
+
+# editors and os noise
+.vscode/
+.idea/
+.DS_Store

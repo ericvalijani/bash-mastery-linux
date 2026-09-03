@@ -1,0 +1,39 @@
+# Run once:  pip install --user pre-commit && pre-commit install
+# Run over everything by hand:  pre-commit run --all-files
+#
+# Nothing here needs a VM, root, or the network beyond the initial install, so
+# a commit stays fast. The heavy verification lives in days/dayNN/verify.sh and
+# only your lab can run it.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-yaml
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      # Nothing in this repo should ever be committed as a large binary. Base
+      # images and VM disks live under $LAB_HOME, never in git.
+      - id: check-added-large-files
+        args: [--maxkb=256]
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        args: [-x, -S, warning]
+
+  - repo: local
+    hooks:
+      # The repository self-test: syntax, the lab.sh CLI contract, executable
+      # bits, and whether the generated day pages still match gen/.
+      - id: repo-self-test
+        name: repo self-test (tests/cli.sh)
+        entry: tests/cli.sh
+        language: system
+        pass_filenames: false
+        always_run: true
