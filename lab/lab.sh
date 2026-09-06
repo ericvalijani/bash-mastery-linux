@@ -234,7 +234,24 @@ cmd_check() {
 
 # --- image ------------------------------------------------------------------
 
+# Every step below needs the virtualization tools. Fail loudly and early rather
+# than half-way through a 1 GB download or a virt-install.
+require_lab_tools() {
+  local missing=()
+  local c
+  for c in qemu-img virsh virt-install; do
+    command -v "$c" >/dev/null 2>&1 || missing+=("$c")
+  done
+  if (( ${#missing[@]} > 0 )); then
+    bad "missing tool(s): ${missing[*]}"
+    echo "  $(pkg_hint)"
+    echo "  sudo systemctl enable --now libvirtd"
+    die "run '$0 check' first and fix everything it reports"
+  fi
+}
+
 cmd_image() {
+  require_lab_tools
   mkdir -p "$IMAGE_DIR"
   if [[ -f "$BASE_IMAGE" ]] && qemu-img info "$BASE_IMAGE" >/dev/null 2>&1; then
     ok "base image already present: $BASE_IMAGE"
@@ -243,7 +260,10 @@ cmd_image() {
   info "downloading Rocky Linux 9 cloud image (about 1 GB)"
   curl -fL --progress-bar -C - -o "$BASE_IMAGE.part" "$BASE_URL"
   mv "$BASE_IMAGE.part" "$BASE_IMAGE"
-  qemu-img info "$BASE_IMAGE" >/dev/null || die "downloaded file is not a valid qcow2"
+  if ! qemu-img info "$BASE_IMAGE" >/dev/null 2>&1; then
+    rm -f "$BASE_IMAGE"
+    die "downloaded file is not a valid qcow2 - deleted it, run '$0 image' again"
+  fi
   ok "base image ready"
 }
 
@@ -319,6 +339,7 @@ wait_for_ip() {
 }
 
 cmd_up() {
+  require_lab_tools
   [[ -f "$BASE_IMAGE" ]] || die "no base image — run '$0 image' first"
   ensure_ssh_key
 

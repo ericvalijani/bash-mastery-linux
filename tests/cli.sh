@@ -79,8 +79,10 @@ while IFS= read -r f; do
 	if head -1 "$f" | grep -q '^#!'; then ok "shebang: $f"; else bad "no shebang: $f"; fi
 done < <(find . -name '*.sh' -not -path './.git/*' | sort)
 
-# shellcheck cannot run here, so grep for the two rules that have already
-# broken CI once: an unguarded cd, and a post-increment under set -e.
+# We cannot run the real shellcheck binary from this script, so grep for the
+# two rules that have already broken CI once: an unguarded cd, and a
+# post-increment under set -e. Do not start these comment lines with the
+# word shellcheck - that turns the comment into a directive and SC1072 fails.
 head2 "shellcheck rules worth catching early"
 if grep -rn 'cd "$(dirname' --include='*.sh' . | grep -v '|| exit' | grep -v '&& pwd' | grep -q .; then
 	bad "unguarded cd (SC2164) - use: cd ... || exit 1"

@@ -3,7 +3,7 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-06
 **Repo:** `bash-mastery-linux`
 **Status:** scaffold complete, 20 days written, **Day 01 scripts written**;
 Days 02-20 scripts still to write
@@ -433,6 +433,22 @@ has no `/dev/kvm`, no libvirt, no `virsh`, no `ip`, and no network. Unverified:
 Rocky 9 — use `rhel9.0`; the fallback chain attempts this already, and
 `lab/README.md` carries the manual `virt-install` commands.
 
+### First real host run (2026-09-06)
+
+`./lab/lab.sh check` behaved correctly on Ubuntu with no virtualization
+stack installed: every detection section was right and the install hint it
+printed was the right one. Two faults surfaced from the owner pasting all
+four step-1 commands at once, and both are fixed:
+
+- `cmd_image` and `cmd_up` ran despite `check` having failed, so a 1 GB
+  download completed and then died on `qemu-img: command not found`. Both
+  now call **`require_lab_tools`** first, which dies with the install hint.
+- A failed qcow2 validation left the bad download in place, so a retry
+  would have trusted it. `cmd_image` now deletes it and says to re-run.
+
+`days/day01/README.md` step 1 was also rewritten to run the four commands
+one at a time, with `check` stated as a gate and the apt install spelled out.
+
 ### Sandbox limitations worth knowing
 
 No shellcheck, bats, `ip`, `nft`, KVM, libvirt or network access. Verification
@@ -446,8 +462,12 @@ nothing — always confirm with `ls -l` before trusting a write.
 
 In the order they should probably be done.
 
-1. **Run `./lab/lab.sh check` on the real host**, then `image`, then
-   `up control`, then `ssh control`. Nothing else is worth doing first.
+1. **Finish the first real host run.** `check` has now been run on the owner's
+   Ubuntu laptop (2026-09-06): host, KVM, memory and disk sections all pass;
+   it correctly reported 5 blocking problems because libvirt, virtinst and
+   qemu-kvm were not installed. Nothing past `check` has run for real yet:
+   `image`, `up control`, `push control`, `ssh control` are still untested
+   against real KVM, as are all five Day 01 scripts against real systemd.
 2. **Write the day scripts.** Day 01 is done (5 scripts). Days 02-20 ship an
    empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
@@ -517,7 +537,7 @@ When changing this repository, keep these in sync:
 README.md                     9.4 KB   overview, quickstart, tiers, memory budget
 docs/curriculum.md            9.5 KB   all 20 days with reasoning
 docs/HANDOFF.md                        this file
-lab/lab.sh                   18.3 KB   586 lines, 31 functions, 12 subcommands
+lab/lab.sh                   19.0 KB   608 lines, 32 functions, 12 subcommands
 lab/verify-lib.sh             2.7 KB   100 lines, 6 public functions
 lab/ci-day.sh                 1.9 KB   57 lines
 lab/README.md                 3.3 KB   hardware, install, manual fallbacks

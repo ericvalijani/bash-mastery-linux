@@ -15,12 +15,12 @@ Every later day ends with "make it persist", and on this family of distros that 
 
 ## What you will work with
 
-- `systemctl list-units --failed`
-- `systemctl cat sshd.service`
-- `systemd-analyze blame`
-- `systemd-analyze critical-chain`
-- `journalctl -b -p err`
-- `/etc/systemd/system/`
+- `systemctl list-units --failed` - every unit that tried to start and did not. On a healthy machine this prints nothing, which is why it is the first thing to run when something is wrong.
+- `systemctl cat sshd.service` - shows the real unit file systemd is using, including any drop-in overrides, so you read what is in effect rather than what you think you installed.
+- `systemd-analyze blame` - each unit and how long it took to start, slowest first. Answers "why is this boot slow".
+- `systemd-analyze critical-chain` - the dependency path that actually determined boot time. Slower than `blame` at first glance but more honest: a unit can be slow and still not hold anything up.
+- `journalctl -b -p err` - errors only, from this boot only. The fastest way to see what the kernel and services complained about since power-on.
+- `/etc/systemd/system/` - where your own units and overrides live. Anything here wins over the packaged units in `/usr/lib/systemd/system/`, which is the whole reason you edit here and never there.
 
 ## Verify
 
@@ -59,9 +59,28 @@ Read them before you run them. They are commented as teaching material rather th
 
 ### 1. On your laptop, bring up one VM
 
+Run these one at a time, from the top of the repository. **Do not paste all four
+at once**: `check` is a gate, and the three after it are pointless until it is
+clean.
+
 ```bash
-cd bash-mastery-linux
 ./lab/lab.sh check          # first time only: does this machine have KVM?
+```
+
+On a fresh Ubuntu machine `check` will report missing tools, because `qemu-kvm`,
+`virtinst` and libvirt are not installed by default. It prints the exact command
+to fix that. Run it, then log out and back in so your new group membership takes
+effect, then run `check` again:
+
+```bash
+sudo apt-get install -y libvirt-daemon-system virtinst qemu-kvm
+sudo systemctl enable --now libvirtd
+sudo usermod -aG kvm,libvirt "$USER"    # log out and back in after this
+```
+
+Only once `check` ends in `ready` do you continue:
+
+```bash
 ./lab/lab.sh image          # first time only: ~900 MB download, cached
 ./lab/lab.sh up control     # ~1 GB of RAM, about a minute
 ./lab/lab.sh status         # wait until control has an IP address
