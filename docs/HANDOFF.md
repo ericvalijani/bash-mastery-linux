@@ -3,7 +3,7 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-04
 **Repo:** `bash-mastery-linux`
 **Status:** scaffold complete, 20 days written, **Day 01 scripts written**;
 Days 02-20 scripts still to write
@@ -318,10 +318,9 @@ vl_manual "description"                        # YOU, never fails
 vl_summary                                     # totals; exit 1 if any FAIL
 ```
 
-**Constraint:** the command string passed to `vl_check` must not contain a
-single quote, because the generator emits it inside single quotes. The
-generator asserts this (`assert "'" not in cmd`) and will crash rather than
-emit a broken script. Use double quotes inside commands.
+**Convention:** `vl_check` command strings are written inside single quotes,
+so use double quotes within the command itself. Keep to it and the checks
+stay readable and quote-safe.
 
 Checks test the **work product**, not knowledge. Examples: `semanage fcontext
 -l` contains `/srv/www` (permanent, not a transient `chcon`); `restorecon -nvR`
@@ -343,13 +342,15 @@ produces no output; a second `ansible-playbook` run reports `changed=0`; a
 The `coverage` job exists so a green run never implies more than it did. It
 names all 13 lab-only days and the reason each is unprovable on a runner.
 
-### `lab/ci-day.sh` (46 lines)
+### `lab/ci-day.sh` (57 lines)
 
 Builds an environment for one day, then runs its `verify.sh`:
 
 1. If `days/dayNN/scripts/setup.sh` exists, run it.
 2. Else, if the day is 06, 07, 08, 09 or 18, run `lab/lab.sh netns-up`.
 3. Else, print `SKIPPED (not yet implemented)` and **exit 0**.
+
+**`verify.sh` only runs when the day's work exists.** A `setup.sh` means it exists. Day 06 is the single exception: the namespace topology *is* its work, so `netns-up` alone is enough. For days 07, 08, 09 and 18 the topology is only the floor - the zone, the resolver and the bridge are the day's work, and running `verify.sh` before those scripts exist fails every time. That is a missing script, not a broken repo, so those jobs skip and exit 0.
 
 Step 3 is why CI is green today: no day scripts exist yet, so there is nothing
 to stand up. Each CI day becomes genuinely verified the moment its `setup.sh`
@@ -360,79 +361,40 @@ Permissions are pinned to `contents: read`. Actions used: `actions/checkout@v4`.
 
 ---
 
-## 7. How the content is generated
+## 7. How a day is put together
 
-**The day pages and `verify.sh` scripts are generated. Do not hand-edit them.**
-Edits will be silently overwritten the next time anyone regenerates.
+Every file in this repository is hand-written and hand-edited. There is no
+generator and no build step.
 
-```
-gen/data1.py     days 01-10 content (data only)
-gen/data2.py     days 11-20 content (data only)
-gen/render.py    day READMEs + verify.sh + docs/curriculum.md
-gen/readme.py    root README.md
-```
+A day is three files that must agree with each other:
 
-Two optional keys drive the parts of a day page that only exist once its
-scripts are written, both defined at the bottom of `gen/data1.py`:
+| File | What it holds |
+|---|---|
+| `days/dayNN/README.md` | objective, why it matters, the work, the checks, what CI proves |
+| `days/dayNN/verify.sh` | those same checks, as assertions, using the `vl_*` API in §5 |
+| `days/dayNN/scripts/*` | the scripts the day walks the reader through |
 
-| Key | Renders as | Shape |
-|---|---|---|
-| `scripts` | the **Scripts for today** table | list of `(filename, what it does, needs_root)` |
-| `howto` | the **Run it on the lab** section | one markdown string, emitted verbatim |
+**The one rule: a check listed on the page must exist in `verify.sh`, and the
+other way round.** A page claiming a check its verifier does not run is the
+single failure this repository cannot tolerate, because every claim in it is
+supposed to be true. Add or remove a check in both places, in the same commit.
 
-A day with neither key still renders correctly — it just tells the reader to
-put their own work in `scripts/`. Add entries to `SCRIPTS` and `HOWTO` as each
-day is written; `data2.py` will need the same two dicts when Day 11 arrives.
+Day pages follow a fixed order so they read the same way: title and metadata
+line, objective, why it matters, the work, then - once the day has scripts -
+a **Scripts for today** table and a **Run it on the lab** runbook, then the
+check list. Copy the shape from `days/day01/README.md`, which is the only
+complete example so far.
 
-The scripts themselves are **not** generated. They live in
-`days/dayNN/scripts/` and are hand-written and hand-edited.
-
-To change anything about a day, edit the data, then:
-
-```bash
-python3 gen/render.py && python3 gen/readme.py
-```
-
-`render.py` prints `days written: 20` and a byte total; `readme.py` prints the
-README size. Then re-run the checks in §8.
-
-### Day data shape
-
-```python
-dict(n=13, title="...", runs="VM: node1", tier="lab",
-     obj="one-sentence objective, rendered as a blockquote",
-     why="why this day exists, one paragraph",
-     work=["commands and files the learner will touch"],
-     checks=[("auto", "description", "shell command"),
-             ("manual", "description", "")])
-```
-
-`tier` is `ci` or `lab` and drives the badge, the README note, and the CI
-matrix. **If you change a day's tier, update the matrix in
-`.github/workflows/ci.yml` and the tier tables in this file and the README** —
-those three lists are not derived from each other.
-
-`render.py` also holds:
-
-- `PHASES` — the four phase boundaries and blurbs.
-- `NEED` — per-day prerequisite commands emitted as `vl_need`.
-- `ram()` — derives the memory figure from the `runs` string.
-- Two asserts that crash rather than emit broken output: no double quote in a
-  check description, no single quote in a check command.
-
-What is **not** generated, and is safe to hand-edit: `lab/lab.sh`,
-`lab/verify-lib.sh`, `lab/ci-day.sh`, `lab/README.md`, `.github/workflows/ci.yml`,
-`.gitignore`, and this handoff.
-
----
-
+The metadata line carries the day's tier and memory cost. If either changes,
+§4 and §5 here, the tier table in `README.md` and the CI matrix in `ci.yml`
+all have to change with it. §10 lists every one of those pairings.
 ## 8. Verified state, and what is not verified
 
 ### What has actually been run
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **111 passed, 0 failed** |
+| `tests/cli.sh` | **109 passed, 0 failed** |
 | `bash -n` on all 29 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -441,6 +403,7 @@ What is **not** generated, and is safe to hand-edit: `lab/lab.sh`,
 | `days/day13/verify.sh` on Ubuntu | 7 SKIP, 2 YOU, exit 0 |
 | `lab/ci-day.sh 04` | `SKIPPED (not yet implemented)`, exit 0 |
 | `lab/ci-day.sh 99` / no argument | exit 2 with usage |
+| First real CI run (2026-09-04) | days 04, 06, 10 green; 07, 08, 09, 18 now skip; `lint` fixed |
 | `ci.yml` structure and tabs | parses, no tabs |
 | `lab.sh push` with no argument | `FAIL usage: ... push <vm> [path...]`, exit 1 |
 | `lab.sh push bogus` | `FAIL unknown vm`, exit 1 |
@@ -491,8 +454,8 @@ In the order they should probably be done.
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
    ships only the changed files**, which will usually be
-   `days/dayNN/scripts/*`, `gen/data1.py` or `gen/data2.py`, the regenerated
-   `days/dayNN/README.md`, and this handoff.
+   `days/dayNN/scripts/*`, `days/dayNN/README.md`, `days/dayNN/verify.sh`,
+   and this handoff.
 3. **Add `scripts/setup.sh` for the CI days** (04, 06, 07, 08, 09, 10, 18).
    Each one converts a `SKIPPED` CI job into a real one.
 4. **Git.** Not initialised. No remote, no first commit. The owner is doing
@@ -519,10 +482,10 @@ When changing this repository, keep these in sync:
 
 | If you change | Also update |
 |---|---|
-| A day's content | `gen/data1.py` or `gen/data2.py`, then regenerate |
-| A day's scripts | its `SCRIPTS` and `HOWTO` entries, then regenerate; §8 and §11 here |
+| A day's content | its `README.md` and `verify.sh`, together |
+| A day's scripts | the Scripts table and runbook on its page; §8 and §11 here |
 | A day's tier | the CI matrix in `ci.yml`, §4 and §5 here, and the README tier table |
-| The number of days | `PHASES` in `render.py`, both tier tables, the memory tables, §4 here |
+| The number of days | both tier tables, the memory tables, `docs/curriculum.md`, §4 here |
 | A check | the count in §5 here (`102 automatic, 31 judgement`) |
 | `lab.sh` subcommands | §3 here, the README lab section, `lab/README.md` |
 | VM names or memory | §3 and §4 here, both memory tables, `vm_mem()` in `lab.sh` |
@@ -539,7 +502,7 @@ When changing this repository, keep these in sync:
 2. **Never add a simulation or offline mode**, however convenient. If a thing
    cannot be verified for real, say so plainly instead.
 3. **Never describe network namespaces as fake.** See §2.
-4. **Never hand-edit generated files.** See §7.
+4. **A day page and its `verify.sh` must never disagree.** See §7.
 5. **A green CI run does not mean a day works.** It means lint passed and, for
    7 of 20 days, that a runner executed them.
 6. **Confirm file writes with `ls -l`.** They have silently no-opped.
@@ -556,7 +519,7 @@ docs/curriculum.md            9.5 KB   all 20 days with reasoning
 docs/HANDOFF.md                        this file
 lab/lab.sh                   18.3 KB   586 lines, 31 functions, 12 subcommands
 lab/verify-lib.sh             2.7 KB   100 lines, 6 public functions
-lab/ci-day.sh                 1.4 KB   46 lines
+lab/ci-day.sh                 1.9 KB   57 lines
 lab/README.md                 3.3 KB   hardware, install, manual fallbacks
 days/dayNN/README.md          20 files
 days/dayNN/verify.sh          20 files, 102 auto + 31 judgement checks
@@ -565,12 +528,11 @@ days/day01/scripts/           5 files   470 lines: lab-demo.sh, setup.sh,
                                         teardown.sh
 days/day02-20/scripts/        19 empty directories
 .github/workflows/ci.yml      2.5 KB   79 lines, 3 jobs
-CONTRIBUTING.md               7.9 KB   213 lines, 9 sections
+CONTRIBUTING.md               7.7 KB   208 lines, 9 sections
 LICENSE                       1.1 KB   MIT, holder: ericvalijani
-tests/cli.sh                  3.4 KB   111 checks, no VM or root needed
+tests/cli.sh                  3.0 KB   109 checks, no VM or root needed
 .pre-commit-config.yaml       1.3 KB   never executed, see §9 item 5
 .gitignore                    413 B    33 lines
-gen/                          4 files  content generator
 ```
 
-29 shell scripts, all `bash -n` clean. 20 days. Day 01 scripts written; 02-20 outstanding. `tests/cli.sh`: 111 passed, 0 failed.
+29 shell scripts, all `bash -n` clean. 20 days. Day 01 scripts written; 02-20 outstanding. `tests/cli.sh`: 109 passed, 0 failed.

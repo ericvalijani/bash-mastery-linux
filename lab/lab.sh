@@ -250,7 +250,8 @@ cmd_image() {
 # --- up ---------------------------------------------------------------------
 
 write_seed() {
-  local vm="$1" ud="$SEED_DIR/$vm-user-data"
+  local vm="$1"
+  local ud="$SEED_DIR/$vm-user-data"
   mkdir -p "$SEED_DIR"
   {
     echo "#cloud-config"
@@ -306,9 +307,9 @@ create_vm() {
 }
 
 wait_for_ip() {
-  local vm="$1" i ip
+  local vm="$1" ip
   info "waiting for $vm to get an address (up to 120s)"
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     ip=$(vm_ip "$vm")
     if [[ -n "$ip" ]]; then ok "$vm is $ip"; return 0; fi
     sleep 2

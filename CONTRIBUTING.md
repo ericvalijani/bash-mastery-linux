@@ -63,7 +63,6 @@ edits a file outside `$LAB_HOME`, will be sent back.
 
 ```bash
 ./tests/cli.sh                 # 100+ checks, no VM and no root needed
-python3 gen/render.py && python3 gen/readme.py   # regenerate, then commit the output
 ```
 
 Optionally, and recommended:
@@ -84,27 +83,24 @@ cd ~/lab/days/dayNN && sudo ./verify.sh
 
 ---
 
-## What is generated and what is not
+## Keeping a day consistent
 
-**The day pages and every `verify.sh` are generated. Do not hand-edit them.**
-Your change will be silently overwritten the next time anyone regenerates.
+A day is three files that have to agree with each other:
 
-| File | Edit it? |
+| File | What it holds |
 |---|---|
-| `days/dayNN/README.md` | No — edit `gen/data1.py` or `gen/data2.py` |
-| `days/dayNN/verify.sh` | No — same |
-| `README.md`, `docs/curriculum.md` | No — `gen/readme.py`, `gen/render.py` |
-| `days/dayNN/scripts/*` | **Yes** — hand-written, never generated |
-| `lab/*.sh`, `tests/cli.sh`, `docs/HANDOFF.md` | **Yes** |
+| `days/dayNN/README.md` | the objective, the work, the checks, what CI proves |
+| `days/dayNN/verify.sh` | those same checks, as assertions |
+| `days/dayNN/scripts/*` | the scripts the day walks you through |
 
-A day's content lives in two dicts at the bottom of `gen/data1.py`: `SCRIPTS`
-(the script table) and `HOWTO` (the run instructions). Add entries as each
-day's scripts get written.
+If you add a check to `verify.sh`, add it to the README's check list too, and
+the other way round. A page that claims a check its verifier does not run is
+the one bug this repository cannot tolerate, because the whole point is that
+the claims are true.
 
-`tests/cli.sh` fails if the generated files no longer match the generator, so
-you cannot forget to commit the regenerated output.
-
----
+The same goes for the tier label and RAM figure at the top of each day page:
+if a day starts needing a second VM, the day page, `README.md` and
+`docs/HANDOFF.md` all have to say so.
 
 ## Writing day scripts
 
@@ -178,10 +174,9 @@ One concern per commit. If the subject needs "and", it is two commits.
 
 Keep these in sync, or the repository starts lying:
 
-1. `gen/data1.py` or `gen/data2.py`, then regenerate.
+1. `days/dayNN/README.md` and `days/dayNN/verify.sh`, together.
 2. The CI matrix in `.github/workflows/ci.yml` if the day's tier changed.
-3. The tier and memory tables in `README.md` (generated) and `docs/HANDOFF.md`
-   (hand-written).
+3. The tier and memory tables in `README.md` and `docs/HANDOFF.md`.
 4. The check counts in `docs/HANDOFF.md` §5.
 5. `docs/HANDOFF.md` §10 lists every one of these pairings, and the
    **Last updated** date at its top.

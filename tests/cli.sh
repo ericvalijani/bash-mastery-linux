@@ -7,13 +7,12 @@
 #
 # It checks the things that are cheap to get wrong and expensive to notice:
 # syntax, the CLI contract of lab.sh, executable bits, and whether the
-# generated files still match their generator.
 #
 # It deliberately does NOT try to test the day scripts. Those install systemd
 # units and need root on a Rocky VM; days/dayNN/verify.sh is their test.
 
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 pass=0
 fail=0
@@ -41,11 +40,6 @@ head2 "shell syntax"
 while IFS= read -r f; do
 	check "bash -n $f" bash -n "$f"
 done < <(find . -name '*.sh' -not -path './.git/*' | sort)
-
-head2 "python generators parse"
-for f in gen/*.py; do
-	check "ast.parse $f" python3 -c "import ast,sys;ast.parse(open(sys.argv[1]).read())" "$f"
-done
 
 head2 "lab.sh CLI contract"
 exits_with 0 "--help succeeds"              bash lab/lab.sh --help
@@ -85,19 +79,19 @@ while IFS= read -r f; do
 	if head -1 "$f" | grep -q '^#!'; then ok "shebang: $f"; else bad "no shebang: $f"; fi
 done < <(find . -name '*.sh' -not -path './.git/*' | sort)
 
-# The day pages and verify scripts are generated. If someone hand-edits one,
-# their change is one regenerate away from vanishing - so catch it now.
-head2 "generated files match their generator"
-if command -v git >/dev/null && git rev-parse --git-dir >/dev/null 2>&1; then
-	python3 gen/render.py >/dev/null && python3 gen/readme.py >/dev/null
-	if git diff --quiet -- README.md docs/curriculum.md days; then
-		ok "regenerating changes nothing"
-	else
-		bad "generated files are out of date - commit the regenerated output:"
-		git diff --stat -- README.md docs/curriculum.md days | sed 's/^/        /'
-	fi
+# shellcheck cannot run here, so grep for the two rules that have already
+# broken CI once: an unguarded cd, and a post-increment under set -e.
+head2 "shellcheck rules worth catching early"
+if grep -rn 'cd "$(dirname' --include='*.sh' . | grep -v '|| exit' | grep -v '&& pwd' | grep -q .; then
+	bad "unguarded cd (SC2164) - use: cd ... || exit 1"
+	grep -rn 'cd "$(dirname' --include='*.sh' . | grep -v '|| exit' | grep -v '&& pwd' | sed 's/^/        /'
 else
-	printf '  skip  generator freshness (no git repository yet)\n'
+	ok "every cd is guarded (SC2164)"
+fi
+if grep -rnE '[(][(][A-Za-z_][A-Za-z0-9_]*[+][+][)][)]' --include='*.sh' . | grep -v '^[.]/tests/cli[.]sh:' | grep -q .; then
+	bad 'post-increment under set -e - use: n=\$((n + 1))'
+else
+	ok "no post-increment arithmetic"
 fi
 
 printf '\n---------------------------------------------------------------\n'

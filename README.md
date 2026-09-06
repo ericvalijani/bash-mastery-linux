@@ -199,4 +199,4 @@ Day 01 ships five worked scripts. The other 19 `days/dayNN/scripts/` directories
 
 MIT - see [LICENSE](LICENSE).
 
-Fixes are welcome, especially anything that does not work on your distribution or your hardware. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: the day pages and the `verify.sh` files are generated, so they are the two things you must not hand-edit.
+Fixes are welcome, especially anything that does not work on your distribution or your hardware. Read [CONTRIBUTING.md](CONTRIBUTING.md) first - it covers how a day is put together and what has to stay in step with what.

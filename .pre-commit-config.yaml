@@ -30,7 +30,7 @@ repos:
   - repo: local
     hooks:
       # The repository self-test: syntax, the lab.sh CLI contract, executable
-      # bits, and whether the generated day pages still match gen/.
+      # bits, and the shell rules shellcheck would catch.
       - id: repo-self-test
         name: repo self-test (tests/cli.sh)
         entry: tests/cli.sh

@@ -7,7 +7,7 @@
 # YOU are judgement calls and never affect the exit status.
 
 set -uo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 # shellcheck source=../../lab/verify-lib.sh
 source "../../lab/verify-lib.sh"
 
