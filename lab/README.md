@@ -8,7 +8,7 @@
 | CPU | virtualization enabled in BIOS/UEFI — `vmx` for Intel, `svm` for AMD |
 | RAM | 8 GB works. 1 GB for a single VM, about 2.5 GB for all three |
 | Disk | ~12 GB: a 1 GB base image plus thin overlays |
-| Packages | libvirt, virt-install, qemu-kvm |
+| Packages | libvirt, virt-install, qemu system emulation for x86 |
 
 Run the check first. It reports exactly what is missing and the command to fix
 it for your distribution:
@@ -24,11 +24,26 @@ it for your distribution:
 sudo dnf install -y libvirt virt-install qemu-kvm libvirt-daemon-config-network
 
 # Debian / Ubuntu
-sudo apt-get install -y libvirt-daemon-system virtinst qemu-kvm
+sudo apt-get install -y qemu-system-x86 libvirt-daemon-system libvirt-clients libvirt-daemon-config-network virtinst acl
+# There is no qemu-kvm package on Debian or Ubuntu any more, and plain
+# qemu-system installs every architecture. qemu-system-x86 is the right one.
 
 sudo systemctl enable --now libvirtd
 sudo usermod -aG kvm,libvirt "$USER"    # then log out and back in
 ```
+
+One more step the first time, and only once:
+
+```bash
+sudo install -d -o "$(id -un)" -g "$(id -gn)" /var/lib/libvirt/images/bash-mastery-linux
+```
+
+The lab keeps its base image and VM disks there rather than under your home
+directory. That is not a style preference. Under `qemu:///system` the VM runs as
+the `libvirt-qemu` user, and on Ubuntu AppArmor confines that process to a fixed
+list of paths which does not include home directories, so a disk under `$HOME`
+is refused even when the file permissions are correct. `lab.sh` uses this
+directory automatically as soon as it exists and is writable by you.
 
 That last step matters. Without it `/dev/kvm` is not writable and every VM
 creation fails with a permission error.
@@ -42,7 +57,13 @@ creation fails with a permission error.
 ./lab/lab.sh ssh node1
 ./lab/lab.sh add-disk node1 2     # Day 4 wants a spare disk
 ./lab/lab.sh down node1           # delete it; recreate in about a minute
+./lab/lab.sh diagnose node1       # when a VM will not boot or get an address
 ```
+
+Each VM has a VNC screen on `127.0.0.1`; `virsh vncdisplay node1` prints the
+display to open in a viewer. Guests created with no display device have been
+seen to spin forever on this hardware without writing anything to the serial
+console, so the screen is on by default. `LAB_GRAPHICS=none` turns it off.
 
 VMs are disposable on purpose. If Day 12 locks you out of sshd or Day 13
 leaves the filesystem mislabelled, delete and recreate rather than repair.
@@ -79,8 +100,9 @@ qemu-img create -f qcow2 -F qcow2 \
 
 virt-install --name node1 --memory 768 --vcpus 1 \
   --disk path=~/.local/share/bash-mastery-linux/disks/node1.qcow2,format=qcow2 --import \
-  --os-variant rocky9 --network network=default --graphics none --noautoconsole \
-  --cloud-init user-data=/path/to/user-data
+  --os-variant rocky9 --network network=default --noautoconsole \
+  --graphics vnc,listen=127.0.0.1 \
+  --disk path=/path/to/seed.iso,device=cdrom,readonly=on --boot hd
 
 virsh list --all
 virsh domifaddr node1

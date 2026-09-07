@@ -9,6 +9,12 @@
 
 set -euo pipefail
 
+# This script changes system state, so it refuses to run anywhere but a
+# disposable lab VM. See lab/on-lab-vm.sh for what counts as one.
+# shellcheck source=../../../lab/on-lab-vm.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../lab/on-lab-vm.sh"
+require_lab_vm
+
 # /usr/local/bin: the correct home for scripts an admin installed by hand. No
 # package manager will ever touch it.
 #

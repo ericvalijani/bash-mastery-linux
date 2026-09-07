@@ -3,7 +3,7 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-06
+**Last updated:** 2026-09-07
 **Repo:** `bash-mastery-linux`
 **Status:** scaffold complete, 20 days written, **Day 01 scripts written**;
 Days 02-20 scripts still to write
@@ -407,7 +407,7 @@ all have to change with it. §10 lists every one of those pairings.
 | `ci.yml` structure and tabs | parses, no tabs |
 | `lab.sh push` with no argument | `FAIL usage: ... push <vm> [path...]`, exit 1 |
 | `lab.sh push bogus` | `FAIL unknown vm`, exit 1 |
-| `lab.sh --help` after the patch | lists 12 subcommands including `push` |
+| `lab.sh --help` after the patch | lists 14 subcommands including `console` and `diagnose` |
 | `set -e` behaviour of `[[ cond ]] && x=y` | confirmed safe: a false test in a non-final `&&` position does not exit |
 
 ### What has never been run
@@ -449,6 +449,401 @@ four step-1 commands at once, and both are fixed:
 `days/day01/README.md` step 1 was also rewritten to run the four commands
 one at a time, with `check` stated as a gate and the apt install spelled out.
 
+**The apt hint itself was wrong, and is fixed.** It named `qemu-kvm`, which
+Debian and Ubuntu now ship only as a virtual package with no installation
+candidate. apt therefore aborts and installs *nothing*, so the following
+`systemctl enable --now libvirtd` fails with "Unit libvirtd.service does not
+exist" and looks like a second, unrelated fault. It is not. The correct
+package is `qemu-system-x86`; plain `qemu-system`, which the QEMU website
+suggests, installs every CPU architecture and is wrong for a KVM lab.
+
+`pkg_hint()` now emits `qemu-system-x86 libvirt-daemon-system libvirt-clients
+libvirt-daemon-config-network virtinst`, and a new **`enable_hint()`** prints
+`libvirtd` or the modular `virtqemud.socket virtnetworkd.socket` depending on
+what the host actually has, since recent libvirt ships no `libvirtd.service`.
+`enable_hint()` is called from all three places that used to hardcode the
+unit name. `README.md`, `lab/README.md` and `days/day01/README.md` were
+corrected to match.
+
+### The libvirt URI trap (fixed 2026-09-06)
+
+`check` reported `network 'default' is defined but inactive` while `sudo virsh
+net-list --all` on the same machine showed it `active`. The Active-field parser
+was verified correct against realistic `net-info` output using a fake `virsh`,
+so the disagreement was not parsing. Two real causes, both now handled:
+
+1. **No libvirt URI was pinned.** Root gets `qemu:///system`; an unprivileged
+   user can silently fall back to `qemu:///session`, which holds none of this
+   lab's VMs or networks. `lab.sh` now exports
+   `LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"`, so the
+   script, the user's shell and `sudo` all read the same daemon. This was a
+   latent fault that would have surfaced again on `up`, `status` and `ssh`.
+2. **A first-call race.** The first `virsh` call after boot can socket-activate
+   `virtnetworkd`, which then autostarts the network - so the network genuinely
+   reads inactive during that call and is active a second later, which is
+   exactly why the owner's follow-up `net-start` answered "already active".
+   `check` now re-reads the state after a 2 second pause before failing, and
+   the failure hint says to re-run `check` if `net-start` reports that.
+
+Also added: a **libvirt group** check (missing membership is why libvirt
+commands need `sudo` until the user logs out and back in), a `net-define`
+hint for the genuinely-missing case, and `net_state()`, which reads the
+`Active` field by name via awk instead of pattern-matching the whole block.
+
+`tests/cli.sh` caught a side effect of that change immediately: its
+"every subcommand is documented" check scraped every `case` branch in
+`lab.sh`, so the new `active)` and `inactive)` branches were demanded of the
+help text. It now reads the `main()` dispatcher only. **108 checks.**
+
+### qemu cannot read your home directory (fixed 2026-09-07)
+
+`up control` failed with `Cannot access storage file
+'/home/eric/.local/share/bash-mastery-linux/disks/control.qcow2'
+(as uid:64055, gid:991): Permission denied`, after `virt-install` had already
+warned that `libvirt-qemu` needed search permission on `/home/eric`,
+`/home/eric/.local` and `/home/eric/.local/share`.
+
+This is structural, not a mistake by the operator. Under `qemu:///system` the
+VM process does not run as you: it runs as `libvirt-qemu` on Debian and Ubuntu,
+and as `qemu` on Rocky. A home directory is mode 0700, so that user cannot
+traverse into it, and `LAB_HOME` defaults to `~/.local/share`. The lab could
+never have started a VM on a default Ubuntu install.
+
+Rejected fixes: `chmod 755 ~` (exposes the whole home directory to every local
+account), and running qemu as root via `/etc/libvirt/qemu.conf` (changes the
+host's security posture for a teaching lab). Chosen fix: **POSIX ACLs granting
+exactly one user exactly what it needs**, which the owner of the directories
+can set without `sudo`.
+
+New functions in `lab/lab.sh`:
+
+- `qemu_user()` - resolves `libvirt-qemu`, else `qemu`, else fails.
+- `grant_path <perms> <path>...` - one `setfacl -m u:<qemu-user>:<perms>` per
+  existing path; a no-op when `setfacl` or the user is absent.
+- `grant_hypervisor_access()` - walks up from `LAB_HOME` to `$HOME` granting
+  **search only** (`x`), then `rx` on `images/` and `seed/`, `r` on the base
+  image, `rwx` on `disks/`.
+
+Called from `cmd_image` (both the fresh-download and cached paths) and from
+`create_vm` immediately after `qemu-img create`, which also grants `rw` on the
+new overlay - each overlay is created 0600 and needs its own entry. `cmd_check`
+now reports this too: it looks for the `x` entry on `$HOME` via `getfacl` and
+warns if it is missing, and warns separately if the `acl` package is not
+installed. `acl` was added to the apt, dnf and pacman package hints and to the
+three documented install lines.
+
+Proved with a fake `setfacl` on `PATH` and a fake `$HOME` tree: eight calls,
+search-only on the four path components, and read/write confined to `disks/`.
+
+Also fixed in the same run: `virt-install` reported `Using --osinfo generic, VM
+performance may suffer`, because `osvariant()` only tried `rocky9`, `rhel9.0`
+and `rhel9-unknown`. It now falls back through `rocky9`, `rocky9.0`, `rhel9.6`
+down to `rhel9.0`, then `rhel9-unknown`, `centos-stream9` and `linux2022`, and
+queries `virt-install --osinfo list` when `osinfo-query` is missing. A close
+RHEL 9 profile still yields virtio and a correct clock; `generic` does not.
+
+### AppArmor, not permissions: the lab moved out of $HOME (2026-09-07)
+
+After the ACL fix above, `up control` still failed:
+`Could not open '/home/eric/.local/share/bash-mastery-linux/images/
+Rocky-9-GenericCloud-Base.latest.x86_64.qcow2': Permission denied`. Two signals
+proved the ACLs had in fact worked: libvirt's own accessibility warning about
+`/home/eric`, `/home/eric/.local` and `/home/eric/.local/share` no longer
+appeared, and `--osinfo` resolved to `rocky9`.
+
+So the remaining denial is not discretionary access control. On Ubuntu, libvirt
+confines each qemu process with an AppArmor profile whose allowed paths do not
+include home directories. Correct file permissions cannot help; the kernel
+refuses the open regardless, and reports it as `EACCES`, which reads exactly
+like a permission problem.
+
+Rejected fixes: putting the AppArmor profile in complain mode (disables a host
+security control for a teaching lab) and editing
+`/etc/apparmor.d/abstractions/libvirt-qemu` (a host-wide change that a learner
+would have to remember to undo). Chosen fix: **keep the lab where libvirt and
+AppArmor already expect image files.**
+
+- `LAB_LIBVIRT_HOME=/var/lib/libvirt/images/bash-mastery-linux`.
+- `lab_home_default()` returns that path when it exists and is writable by the
+  invoking user, otherwise the old `~/.local/share` path. `LAB_HOME` still
+  overrides everything, so nothing that set it breaks.
+- `relocate_hint()` prints the single command that creates it - `sudo install -d
+  -o <user> -g <group> ...` - plus an `mv` of the existing `images/` directory
+  when one is present, so the ~900 MB base image is not downloaded twice.
+- `cmd_check` now reports `lab directory is outside your home directory`, or
+  warns and prints the hint. `create_vm` prints the same warning before it
+  builds an overlay that cannot possibly boot.
+
+The ACL machinery from the previous fix is kept: it is still what makes a
+home-directory lab work on distributions without AppArmor, and it is harmless
+where it is not needed.
+
+Verified in the sandbox by pointing `LAB_LIBVIRT_HOME` at a writable temporary
+directory (chose it) and at a missing one (fell back to `$HOME`), and by
+inspecting `relocate_hint` output.
+
+### The VM that creates itself and then powers off (2026-09-07)
+
+With the storage problems gone, `up control` reported `control defined and
+booting`, then `status` showed `control  shut off`. Nothing was broken on the
+host; the sequence is how `virt-install` works, and `lab.sh` did not account
+for it.
+
+`virt-install --import --cloud-init` treats the first boot as an *install
+phase*. During that phase libvirt sets `on_reboot=destroy` on the domain so the
+generated cloud-init ISO can be detached cleanly, and the Rocky image does
+reboot once cloud-init has applied the seed. Because we pass `--noautoconsole`,
+`virt-install` has already returned - it even prints "Domain is still running.
+Installation may be in progress" - so when that reboot lands, the domain is
+destroyed and left `shut off`. The final XML has no ISO attached and boots
+normally, so the only missing step was starting it.
+
+- New `ensure_running()` reads `virsh domstate` and starts a `shut off` domain,
+  resumes a `paused` one, does nothing when it is already `running`, and warns
+  for anything else. It never fails, so it is safe under `set -e`.
+- `wait_for_ip()` now sleeps 10s to let cloud-init run, calls `ensure_running`,
+  then polls for up to 180s (was 120s) and re-checks the domain state every
+  16 seconds, because the power-off can land at any point in that first boot.
+- `cmd_status` prints `start it with: lab.sh up <vm>` under a `shut off` VM.
+  `up` on an existing VM skips creation but still waits, so re-running it is
+  now the single recovery command for this and most other boot problems.
+
+Tested with a fake `virsh` across all of `running`, `shut off`, `paused` and
+`pmsuspended`, including a `virsh start` that exits non-zero: the failure warns
+and still returns 0.
+
+### Running but no address, and a status line that misled (2026-09-07)
+
+`up control` started the powered-off domain correctly, but no DHCP lease ever
+appeared: `status` showed `control  running  -`, and `ssh` failed with
+`no address for control`. Two separate shortcomings in `lab.sh` came out of
+this, both about the script telling the operator too little:
+
+1. **There was no way to look at the VM.** A running VM with no lease can only
+   be explained from its console - kernel messages, cloud-init output, or a
+   login prompt meaning the guest is fine and the problem is DHCP or the lease
+   lookup. New 13th subcommand **`console <vm>`** (`exec virsh console`, with a
+   reminder that Enter gives a prompt and `Ctrl+]` exits). `status` now prints
+   `running but no DHCP lease yet: lab.sh console <vm>` in exactly that case,
+   and both `ssh` and `push` print the console command plus
+   `virsh net-dhcp-leases` instead of a bare failure.
+2. **`status` read like an instruction.** Its namespace line said
+   `none - run: sudo lab.sh netns-up`, which on Day 01 looks like a required
+   step; the operator asked whether they had to run it. Namespaces are only for
+   Days 6-10. The line now reads
+   `none - only Days 6-10 need these (sudo lab.sh netns-up)`.
+
+Lesson recorded for the remaining days: any status line that names a command is
+read as an order. If a command is optional or belongs to another day, the line
+has to say so on the same line.
+
+### Watching the boot from the first byte (2026-09-07)
+
+The first host run reached a state that none of the previous fixes explain:
+`domstate` says `running`, `domiflist` shows a virtio NIC on the `default`
+network, the domain XML has a correct virtio disk under
+`/var/lib/libvirt/images/bash-mastery-linux/disks/` and a proper `isa-serial`
+console on `/dev/pts/1` - and yet `virsh console` prints nothing and the DHCP
+lease table is empty.
+
+An empty console proves nothing on its own, which was the real gap: attaching
+to a VM that has already finished booting shows no output, because the boot
+messages scrolled past before the connection existed and an idle guest writes
+nothing new. "Booted fine but no DHCP" and "never executed a kernel" look
+identical from there.
+
+- **`console <vm> --restart`** power-cycles the domain and attaches with
+  `virsh start --console`, so firmware, boot loader and kernel output are all
+  captured. The plain form now suggests it when nothing appears.
+- **Backing-chain validation in `create_vm`.** A thin overlay whose chain to the
+  base image is broken - for example because the base image was moved after the
+  overlay was created, which is exactly what the relocation fix asked the
+  operator to do - produces a guest that boots to nothing with no host-side
+  error at all. `qemu-img info --backing-chain` is now checked immediately after
+  `qemu-img create`; on failure the overlay is deleted and the operator is told
+  to re-run `image` then `up`.
+
+The empty `<disk device='cdrom'>` entry with no `<source>` seen in the XML is
+the detached cloud-init ISO from the install phase. It is expected and harmless.
+
+### The seed ISO we build ourselves (2026-09-07)
+
+The install-phase problem was patched twice (ensure_running, then the console
+tooling) before the mechanism itself was replaced. `virt-install --cloud-init`
+is convenient and fragile: it runs the first boot as an install phase with
+`on_reboot=destroy` so it can detach the seed ISO cleanly, and because
+`--noautoconsole` makes virt-install return early, the guest's post-cloud-init
+reboot leaves the domain powered off at the worst possible moment - mid-way
+through growing the filesystem, creating the `lab` user and installing the SSH
+key.
+
+`create_vm` now builds the NoCloud seed ISO itself and attaches it as a
+permanent read-only cdrom, with `--boot hd` and no `--cloud-init` flag at all.
+There is no install phase, so the very first boot is an ordinary boot.
+
+- `seed_iso()` writes `user-data` (from `write_seed`) and a `meta-data` file
+  containing `instance-id` and `local-hostname` into `seed/<vm>/`, then builds
+  the image with `cloud-localds`, or `genisoimage`, or `xorriso` - whichever
+  exists. **The filesystem label must be exactly `CIDATA`** or cloud-init will
+  not look at the disk.
+- The ISO is granted `r` through `grant_path`, like the base image.
+- With no builder present the old `--cloud-init` path still runs, but it warns
+  and prints `iso_pkg_hint()` (`cloud-image-utils` on apt, `cloud-utils` on
+  dnf). `cloud-image-utils` was added to all three install lines.
+- cloud-init re-reads the seed on every boot now that the ISO stays attached.
+  That is harmless: its modules are idempotent.
+
+Both branches were proved with fake `virt-install`/`cloud-localds` binaries:
+the ISO branch emits `device=cdrom,readonly=on` and `--boot hd` and **zero**
+`--cloud-init` flags; the fallback branch warns, prints the hint, and still
+passes `user-data=...,disable=on`.
+
+**A lock error is not a corruption error.** `qemu-img info` on a disk belonging
+to a running domain fails with `Failed to get shared "write" lock`, which says
+nothing about the image. Use `--force-share`, or check it while the VM is off.
+
+### One command that collects every clue (2026-09-07)
+
+The stuck-VM investigation cost four round trips because each host-side command
+answers only a fraction of the question, and the most informative file was never
+asked for. `console <vm> --restart` finally produced the decisive observation:
+**no output at all, not even firmware**, which rules out the guest OS entirely
+and points at qemu never getting the guest off the ground.
+
+`diagnose <vm>` (14th subcommand) collects the whole picture in one run:
+
+| Measurement | What it distinguishes |
+| --- | --- |
+| `domstate`, `dominfo` | defined vs running vs paused |
+| `cpu-stats --total`, read twice three seconds apart | whether the vCPU is executing instructions at all |
+| `domblkstat` `rd_req`/`rd_bytes` | whether the guest read a single block; a guest that reached its boot loader has read thousands |
+| `qemu-img info --backing-chain --force-share` | whether the overlay still resolves to the base image |
+| seed ISO presence | whether the VM predates the seed-ISO path |
+| `/var/log/libvirt/qemu/<vm>.log` | **the file that names the reason a domain will not run.** Needs root; the command is printed when it cannot be read |
+| `dmesg` AppArmor/OOM lines, `free -m`, lease table | host-side refusals and memory pressure |
+
+The device name comes from `domblklist` rather than being hardcoded to `vda`,
+and `--force-share` is mandatory: a running domain holds a write lock and
+`qemu-img` otherwise fails with an error that reads like corruption but is not.
+
+**Lesson for every future stuck-guest problem: read the per-domain qemu log
+first.** Serial silence is not evidence, because attaching to an already-booted
+VM shows nothing either way.
+
+### Alive, spinning, and silent (2026-09-07)
+
+The first `diagnose` run on the host overturned the previous conclusion. The
+guest is not failing to start - it is running hard and saying nothing:
+
+| Measurement | Value | Meaning |
+| --- | --- | --- |
+| `cpu_time` | 650.2s, +3.3s over 3s | one vCPU pegged at ~100%, not idle, not stopped |
+| `rd_req` / `rd_bytes` | 82,236 / 1.44 GB | the guest read a gigabyte and a half; it is well past firmware |
+| backing chain | resolves to the base image | the relocation did not break anything |
+| seed ISO | 374 KB, `libvirt-qemu:kvm`, attached as `ide-cd` | the new seed path works |
+| qemu log | ordinary command line, `char device redirected to /dev/pts/1`, no error | qemu itself is not complaining |
+| free memory | 2175 MB | no OOM kill |
+
+So "qemu never gets the guest executing" was wrong. A guest burning a full core
+while reading gigabytes and never reaching NetworkManager - hence the empty
+lease table - has two plausible explanations, and `diagnose` was missing the
+measurement that separates them:
+
+1. **Software emulation instead of KVM.** TCG pegs one host core, makes boot
+   glacial, and produces exactly this pattern. `info kvm` via the qemu monitor
+   settles it in one line; the tail of the qemu log never shows the `-accel`
+   argument, which is why four round trips missed it.
+2. **A guest genuinely stuck in early boot**, spinning on I/O.
+
+Added, therefore:
+
+- `diagnose` now runs `qemu-monitor-command --hmp 'info kvm'` and `'info status'`,
+  and `domifaddr --source arp` - because the host ARP table sees a guest that
+  configured an address without asking libvirt's dnsmasq, which a lease table
+  never shows.
+- **`LAB_GRAPHICS`** (default `none`). `LAB_GRAPHICS=vnc ./lab/lab.sh up control`
+  gives the guest a screen, bound to `127.0.0.1` only because these guests have
+  no console password. Serial-only is right for a scripted lab, but a guest that
+  boots and never writes to `ttyS0` is invisible without it, and there was no
+  way to look at the screen at all. `diagnose` prints the `vncdisplay` when one
+  exists and the recreate command when it does not.
+
+**Lesson: serial silence is not evidence of a dead guest, and CPU time plus
+block-read counters are the cheapest proof of life there is.**
+
+### The missing display device (2026-09-07, resolved)
+
+`LAB_GRAPHICS=vnc ./lab/lab.sh up control` booted in under a minute and reported
+`control is 192.168.122.122`. The same image, the same seed ISO, the same disk
+chain and `kvm support: enabled` had previously spun for nineteen minutes with
+`--graphics none`. **The one variable was the presence of a display device.**
+
+The likely mechanism is the boot loader: RHEL-family cloud images configure GRUB
+for a graphical terminal, and with no video device at all it can hang before
+handing over to the kernel - which fits every observation, including the pegged
+vCPU, the gigabyte of disk reads, and the complete absence of serial output.
+This is stated as the probable cause rather than a proven one: the decisive
+experiment (booting headless with a serial-forced kernel command line) was never
+run, because the working configuration was preferable to a proof.
+
+**`LAB_GRAPHICS` now defaults to `vnc`, bound to `127.0.0.1`.** The reasoning is
+not subtle: a guest whose console cannot be looked at is not debuggable, and
+this project asks a learner to break things on purpose. `LAB_GRAPHICS=none`
+restores headless behaviour.
+
+The second half of the user's question - "why is it not in the README" - was the
+fairer one. It was not in the README because it had been invented twenty minutes
+earlier as a debugging flag, which is exactly the failure mode described in
+maintenance rule 4: a workaround that lives only in a chat transcript. The
+working configuration is now the default, and `virsh vncdisplay <vm>` plus
+`diagnose` are documented in `README.md`, `lab/README.md` and
+`days/day01/README.md`.
+
+**Rule: when a flag turns out to be the difference between working and not
+working, it stops being a flag. It becomes the default, in the documentation,
+in the same change.**
+
+### Day 01 was run on the laptop (2026-09-07)
+
+Day 01 passed - 4 PASS, 1 YOU, exit 0, \`Restart=\` proven by killing the process
+and watching it come back. It was run on the host, not on \`control\`. The
+screenshots show \`eric@eric-X556UQ .../days/day01$ sudo ./scripts/setup.sh\`,
+and \`lab-demo.service\` was installed and enabled on the user's own Ubuntu
+machine. On \`control\`, \`systemctl is-enabled lab-demo\` still answered
+\`No such file or directory\`.
+
+Nothing was damaged - \`lab-demo\` is a harmless \`sleep\` loop as \`User=nobody\` -
+but Day 11 rewrites firewall rules, Day 12 hardens sshd and Day 13 relabels
+filesystems. The same mistake on any of those days ends the project and
+violates the one hard requirement of this repo: never risk the host OS.
+
+The cause was documentation, not the user. \`### 5. Prove it survives a reboot\`
+said \`sudo reboot\` without saying which machine, and every step before it read
+as something you type wherever you happen to be. The give-away was
+\`Operation inhibited by "eric" ... user session inhibited\` - systemd refusing to
+reboot a desktop with a graphical session, which no VM would ever say.
+
+Fixed structurally rather than with a warning paragraph:
+
+- **\`lab/on-lab-vm.sh\`**, a guard library exporting \`require_lab_vm\`. A machine
+  qualifies if \`/etc/bash-mastery-linux-lab\` exists or its short hostname is
+  \`control\`, \`node1\` or \`node2\`. Otherwise it prints the three commands that get
+  you onto a VM and exits 1 before anything is touched. \`hostname(1)\` is not
+  installed everywhere, so it falls back to \`/etc/hostname\` and then to
+  \`unknown\` - which refuses, because refusing is the safe default.
+  \`LAB_ALLOW_THIS_MACHINE=1\` overrides it and says so on stderr.
+- **cloud-init writes the marker** via \`write_files\` in \`write_seed\`, so a lab VM
+  identifies itself even if it is renamed.
+- **\`setup.sh\` and \`break-and-fix.sh\` call it.** \`teardown.sh\` deliberately does
+  not: it removes state, and it must stay usable on a machine where \`setup.sh\`
+  should never have run in the first place. \`explore-boot.sh\` is read-only and
+  needs no guard.
+- Every state-changing script in Days 02-20 must source it. This is now
+  maintenance rule 8 in section 10.
+
+**Rule: an instruction that does not name the machine it runs on will be run on
+the wrong machine. Guard the script; do not warn in prose.**
+
 ### Sandbox limitations worth knowing
 
 No shellcheck, bats, `ip`, `nft`, KVM, libvirt or network access. Verification
@@ -465,7 +860,7 @@ In the order they should probably be done.
 1. **Finish the first real host run.** `check` has now been run on the owner's
    Ubuntu laptop (2026-09-06): host, KVM, memory and disk sections all pass;
    it correctly reported 5 blocking problems because libvirt, virtinst and
-   qemu-kvm were not installed. Nothing past `check` has run for real yet:
+   qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
 2. **Write the day scripts.** Day 01 is done (5 scripts). Days 02-20 ship an
@@ -528,6 +923,13 @@ When changing this repository, keep these in sync:
 6. **Confirm file writes with `ls -l`.** They have silently no-opped.
 7. **Do not put lab state in the repo.** Everything lives under `$LAB_HOME`;
    `.gitignore` covers qcow2 images, pcaps, private keys and vault passwords.
+8. **Every script that changes system state must `source lab/on-lab-vm.sh` and
+   call `require_lab_vm`.** Day 01 was run on the user's laptop because no
+   script asked where it was. Read-only tours and teardown scripts are the two
+   deliberate exceptions.
+9. **Name the machine in every instruction.** "Run `sudo reboot`" is a bug.
+   "Reboot the VM: check `hostname` prints `control`, then `sudo reboot`" is
+   not.
 
 ---
 
@@ -537,8 +939,9 @@ When changing this repository, keep these in sync:
 README.md                     9.4 KB   overview, quickstart, tiers, memory budget
 docs/curriculum.md            9.5 KB   all 20 days with reasoning
 docs/HANDOFF.md                        this file
-lab/lab.sh                   19.0 KB   608 lines, 32 functions, 12 subcommands
+lab/lab.sh                   36.2 KB   1043 lines, 42 functions, 14 subcommands
 lab/verify-lib.sh             2.7 KB   100 lines, 6 public functions
+lab/on-lab-vm.sh              2.0 KB   65 lines, refuses to run off a lab VM
 lab/ci-day.sh                 1.9 KB   57 lines
 lab/README.md                 3.3 KB   hardware, install, manual fallbacks
 days/dayNN/README.md          20 files
@@ -550,9 +953,9 @@ days/day02-20/scripts/        19 empty directories
 .github/workflows/ci.yml      2.5 KB   79 lines, 3 jobs
 CONTRIBUTING.md               7.7 KB   208 lines, 9 sections
 LICENSE                       1.1 KB   MIT, holder: ericvalijani
-tests/cli.sh                  3.0 KB   109 checks, no VM or root needed
+tests/cli.sh                  4.2 KB   112 checks, no VM or root needed
 .pre-commit-config.yaml       1.3 KB   never executed, see §9 item 5
 .gitignore                    413 B    33 lines
 ```
 
-29 shell scripts, all `bash -n` clean. 20 days. Day 01 scripts written; 02-20 outstanding. `tests/cli.sh`: 109 passed, 0 failed.
+30 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real on the lab; 02-20 outstanding. `tests/cli.sh`: 112 passed, 0 failed.

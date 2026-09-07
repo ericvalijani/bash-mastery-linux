@@ -67,16 +67,52 @@ clean.
 ./lab/lab.sh check          # first time only: does this machine have KVM?
 ```
 
-On a fresh Ubuntu machine `check` will report missing tools, because `qemu-kvm`,
-`virtinst` and libvirt are not installed by default. It prints the exact command
-to fix that. Run it, then log out and back in so your new group membership takes
-effect, then run `check` again:
+On a fresh Ubuntu machine `check` will report missing tools, because qemu,
+libvirt and `virt-install` are not installed by default. It prints the exact
+commands; they are also here:
 
 ```bash
-sudo apt-get install -y libvirt-daemon-system virtinst qemu-kvm
-sudo systemctl enable --now libvirtd
+sudo apt-get install -y qemu-system-x86 libvirt-daemon-system libvirt-clients libvirt-daemon-config-network virtinst acl
+```
+
+Then, once, so the hypervisor can reach the lab's disks:
+
+```bash
+sudo install -d -o "$(id -un)" -g "$(id -gn)" /var/lib/libvirt/images/bash-mastery-linux
+```
+
+- VM disks cannot live under your home directory on Ubuntu. AppArmor
+  confines the `libvirt-qemu` process to a list of paths that excludes
+  `/home`, so qemu is denied the disk even when its permissions are right.
+  `lab.sh` picks this directory up automatically once it exists.
+
+Two things about that line, because both bite people:
+
+- **There is no `qemu-kvm` package on Debian or Ubuntu any more.** It is a
+  virtual package with no installation candidate, so apt refuses and installs
+  *nothing at all* - which is why a follow-up `systemctl enable --now libvirtd`
+  then says the unit does not exist. That is not a second fault, it is the same
+  one. The real package is `qemu-system-x86`.
+- **Do not use plain `qemu-system`.** The QEMU website suggests it, but that
+  metapackage installs emulators for every CPU architecture - hundreds of
+  megabytes you will never boot. KVM only runs the host architecture.
+
+Now start the daemon. Recent libvirt splits `libvirtd` into modular daemons and
+may not ship `libvirtd.service` at all, so use whichever exists:
+
+```bash
+sudo systemctl enable --now libvirtd 2>/dev/null \
+  || sudo systemctl enable --now virtqemud.socket virtnetworkd.socket
 sudo usermod -aG kvm,libvirt "$USER"    # log out and back in after this
 ```
+
+If `check` then still says the `default` network is not defined:
+
+```bash
+sudo virsh net-start default && sudo virsh net-autostart default
+```
+
+Log out and back in, then run `check` again.
 
 Only once `check` ends in `ready` do you continue:
 
@@ -86,7 +122,18 @@ Only once `check` ends in `ready` do you continue:
 ./lab/lab.sh status         # wait until control has an IP address
 ```
 
+The VM has a screen as well as a serial console. `virsh vncdisplay control`
+prints something like `127.0.0.1:0`; open that in any VNC viewer to watch it
+boot. If it never gets an address, `./lab/lab.sh diagnose control` collects
+everything worth knowing in one go.
+
 ### 2. Copy the repo onto the VM
+
+Everything from here happens **on the VM**. The day installs a unit, kills
+processes and breaks a service on purpose; none of that belongs on your own
+machine. `setup.sh` and `break-and-fix.sh` now refuse to run anywhere that is
+not a lab VM, and your shell prompt showing `[lab@control ~]$` is the
+confirmation to look for.
 
 ```bash
 ./lab/lab.sh push control
@@ -159,10 +206,25 @@ state. Without it the run exits 0 with everything skipped, which is not a pass.
 
 ### 5. Prove it survives a reboot
 
-This is the actual objective of the day, and no script can do it for you:
+This is the actual objective of the day, and no script can do it for you.
+**Reboot the VM, not your laptop.** Run this while logged in over
+`./lab/lab.sh ssh control`, so the shell you type it into belongs to the VM:
 
 ```bash
-sudo reboot                      # your ssh session will drop
+hostname                         # must print: control
+sudo reboot                      # your ssh session will drop - that is the point
+```
+
+If `hostname` prints your laptop name instead, you are in the wrong shell and
+`sudo reboot` would restart your own machine. On a desktop it will usually
+refuse with `Operation inhibited by ... user session inhibited`, which is a
+useful accident: it is systemd-inhibit protecting a logged-in graphical
+session, and it is the clearest sign you are on the wrong host.
+
+You can also power-cycle it from the laptop without logging in:
+
+```bash
+virsh reboot control
 ```
 
 Then from the host, once it is back (about 20 seconds):

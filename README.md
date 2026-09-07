@@ -18,7 +18,7 @@ Nothing here is simulated. There is no offline mode, no fake output, and no caps
 `check` tells you exactly what your distribution is missing and prints the install command for it. On Ubuntu that is usually:
 
 ```bash
-sudo apt-get install -y libvirt-daemon-system virtinst qemu-kvm
+sudo apt-get install -y qemu-system-x86 libvirt-daemon-system libvirt-clients libvirt-daemon-config-network virtinst acl
 sudo systemctl enable --now libvirtd
 sudo usermod -aG kvm,libvirt "$USER"   # then log out and back in
 ```
@@ -36,16 +36,16 @@ sudo ./lab/lab.sh netns-status  # shows it and ping-tests it
 
 ## 🗺️ The path
 
-**Phase 1 — The host** · Days 01–05  
+**Phase 1 — The host** · Days 01–05
 One machine, understood properly: boot, identity, processes, storage, logs.
 
-**Phase 2 — The network** · Days 06–10  
+**Phase 2 — The network** · Days 06–10
 Five days of real kernel networking that cost no memory at all.
 
-**Phase 3 — Hardening and configuration management** · Days 11–15  
+**Phase 3 — Hardening and configuration management** · Days 11–15
 Lock a host down by hand, then make it repeatable.
 
-**Phase 4 — Production operations** · Days 16–20  
+**Phase 4 — Production operations** · Days 16–20
 The things that turn a configured host into one you can rely on.
 
 | Day | Title | Runs on | Verified by |
@@ -145,8 +145,23 @@ One script owns the whole environment.
 sudo ./lab/lab.sh netns-up      # build the Days 06-10 network
 sudo ./lab/lab.sh netns-status  # show it and ping-test it
 sudo ./lab/lab.sh netns-down    # tear it down
+./lab/lab.sh diagnose <vm>      # every clue about a VM that will not boot
+./lab/lab.sh console <vm>       # attach to its console (--restart to watch it boot)
 ./lab/lab.sh destroy            # everything
 ```
+
+### Looking at a VM
+
+Every VM gets a VNC screen bound to `127.0.0.1`:
+
+```bash
+virsh vncdisplay control    # e.g. 127.0.0.1:0 - open it in any VNC viewer
+```
+
+That is deliberate. A headless guest that boots but writes nothing to its
+serial port is impossible to diagnose, and on some hardware the absence of a
+display device stops these cloud images booting at all. Set
+`LAB_GRAPHICS=none` if you want strictly headless VMs.
 
 ### The namespace network
 

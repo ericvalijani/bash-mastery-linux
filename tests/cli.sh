@@ -60,7 +60,11 @@ while IFS= read -r sub; do
 	else
 		bad "help does not mention $sub"
 	fi
-done < <(sed -n 's/^    \([a-z][a-z-]*\)).*/\1/p' lab/lab.sh | grep -v destroy | sort -u)
+# Read the dispatcher only. Any other case statement in the script - such as
+# the network state check - is not a subcommand and must not be demanded of
+# the help text.
+done < <(awk '/^main\(\) \{/, /^\}/' lab/lab.sh \
+  | sed -n 's/^    \([a-z][a-z-]*\)).*/\1/p' | grep -v destroy | sort -u)
 
 head2 "ci-day.sh contract"
 exits_with 2 "no argument exits 2"          bash lab/ci-day.sh
