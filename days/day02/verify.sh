@@ -3,6 +3,12 @@
 # Day 02 — Users, sudo, permissions and ACLs
 # Run this on: VM: node1
 #
+#   sudo ./verify.sh
+#
+# Root is required: asking sudo about another user's privileges is itself a
+# privileged operation, and the ACL check reads a 2770 directory. Without root
+# every check SKIPs, which is not a pass - see the summary line.
+#
 # Exits 0 only when every automatic check passes. Items printed as
 # YOU are judgement calls and never affect the exit status.
 
@@ -12,7 +18,8 @@ cd "$(dirname "$0")" || exit 1
 source "../../lab/verify-lib.sh"
 
 vl_init "Day 02 — Users, sudo, permissions and ACLs"
-vl_need setfacl
+vl_need setfacl getfacl sudo
+vl_need_root
 
 vl_check "a system account appsvc exists with no login shell" 'id appsvc && getent passwd appsvc | grep -qE "(nologin|false)$"'
 vl_check "appsvc may restart one service and nothing else" 'sudo -l -U appsvc | grep -q "systemctl restart"'

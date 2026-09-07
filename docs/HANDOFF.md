@@ -5,8 +5,8 @@
 
 **Last updated:** 2026-09-07
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Day 01 scripts written**;
-Days 02-20 scripts still to write
+**Status:** scaffold complete, 20 days written, **Day 01 and Day 02 scripts
+written**; Days 03-20 scripts still to write
 **Never executed against real KVM hardware.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Day 01 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01-02 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **109 passed, 0 failed** |
-| `bash -n` on all 29 shell scripts | 0 failures |
+| `tests/cli.sh` | **127 passed, 0 failed** (was 109; Day 02's five scripts added checks) |
+| `bash -n` on all 35 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -844,6 +844,50 @@ Fixed structurally rather than with a warning paragraph:
 **Rule: an instruction that does not name the machine it runs on will be run on
 the wrong machine. Guard the script; do not warn in prose.**
 
+### Day 02 was written (2026-09-07), and has not been run
+
+Five scripts, following Day 01's shape exactly: a payload, an idempotent
+`setup.sh`, a read-only tour, a `break-and-fix.sh` with a `--hard` mode, and a
+`teardown.sh`. `bash -n` clean, `tests/cli.sh` green at 127. **Nothing has been
+executed**: the authoring sandbox has no systemd, no `setfacl`, no `visudo` and
+no Rocky guest, so every claim below is design intent until `node1` says
+otherwise.
+
+What the day builds, and why each piece is there rather than being asserted in
+prose:
+
+| Object | Choice | Reason |
+|---|---|---|
+| group `appdata` | owns `/srv/shared`, mode `2770` | gives the setgid check something real to inherit from |
+| user `appsvc` | `--system`, `/sbin/nologin`, **own primary group**, *not* in `appdata` | if `appsvc` were an `appdata` member the ACL would be decoration. Excluding it makes the ACL load-bearing, which is what the day is teaching |
+| `/srv/shared` | `setfacl -m u:appsvc:rwx` plus a **default** ACL | the `-m` entry and the `-d` entry are separate; setting one does not set the other, and that gap is a real production bug |
+| `/etc/sudoers.d/appsvc` | `Cmnd_Alias`, absolute paths, `(root)` not `(ALL)`, `0440` | `(root)` is what keeps `verify.sh`'s "cannot become root" check honest, since it greps for `(ALL).*ALL` |
+| `lab-app.service` | `User=appsvc`, `ProtectSystem=full` + `ReadWritePaths=/srv/shared` | Day 01 used `ProtectSystem=strict`, which would block this service's only job. The pairing is the lesson |
+
+The service **writes** rather than just sleeping, which is the one structural
+difference from Day 01's payload. That is deliberate: a permission mistake has
+to produce a dead service and a `Permission denied` in the journal, otherwise
+the ACL demonstration proves nothing.
+
+Two deviations from Day 01, both intentional:
+
+- **`teardown.sh` calls `require_lab_vm`.** Day 01's teardown deliberately does
+  not, because it only removes a unit file and a script. This one deletes a
+  user, a group and `/srv/shared` — a plausible path on a real machine — so the
+  guard is worth more than the "usable anywhere" property. The exception in
+  maintenance rule 8 now covers read-only tours only.
+- **`verify.sh` gained `vl_need_root` and `vl_need getfacl sudo`.** No check was
+  added or removed, so the counts in §5 are unchanged. Without root,
+  `sudo -l -U appsvc` fails and two checks reported `FAIL` when the honest
+  answer was `SKIP` — the exact false-failure the `SKIP` tier exists to prevent.
+
+Expected on a healthy run: **5 PASS, 1 YOU, exit 0.**
+
+The likeliest real-world failures, in order: `sudo -u appsvc` behaving
+differently than expected against a `nologin` account; `useradd --system
+--create-home` not creating the home directory on Rocky 9; and the exact wording
+of sudo's refusal, which `break-and-fix.sh` describes but does not parse.
+
 ### Sandbox limitations worth knowing
 
 No shellcheck, bats, `ip`, `nft`, KVM, libvirt or network access. Verification
@@ -863,8 +907,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Day 01 is done (5 scripts). Days 02-20 ship an
-   empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 and 02 are done (5 scripts each).
+   Days 03-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -925,8 +969,10 @@ When changing this repository, keep these in sync:
    `.gitignore` covers qcow2 images, pcaps, private keys and vault passwords.
 8. **Every script that changes system state must `source lab/on-lab-vm.sh` and
    call `require_lab_vm`.** Day 01 was run on the user's laptop because no
-   script asked where it was. Read-only tours and teardown scripts are the two
-   deliberate exceptions.
+   script asked where it was. Read-only tours are the one deliberate exception.
+   A teardown may skip the guard only when everything it removes is unambiguously
+   ours, as in Day 01; Day 02's teardown deletes a user and `/srv/shared`, so it
+   is guarded.
 9. **Name the machine in every instruction.** "Run `sudo reboot`" is a bug.
    "Reboot the VM: check `hostname` prints `control`, then `sudo reboot`" is
    not.
@@ -949,13 +995,18 @@ days/dayNN/verify.sh          20 files, 102 auto + 31 judgement checks
 days/day01/scripts/           5 files   470 lines: lab-demo.sh, setup.sh,
                                         explore-boot.sh, break-and-fix.sh,
                                         teardown.sh
-days/day02-20/scripts/        19 empty directories
+days/day02/scripts/           5 files   ~34 KB: lab-app.sh, setup.sh,
+                                        explore-perms.sh, break-and-fix.sh,
+                                        teardown.sh
+days/day03-20/scripts/        18 empty directories
 .github/workflows/ci.yml      2.5 KB   79 lines, 3 jobs
 CONTRIBUTING.md               7.7 KB   208 lines, 9 sections
 LICENSE                       1.1 KB   MIT, holder: ericvalijani
-tests/cli.sh                  4.2 KB   112 checks, no VM or root needed
+tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 .pre-commit-config.yaml       1.3 KB   never executed, see §9 item 5
 .gitignore                    413 B    33 lines
 ```
 
-30 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real on the lab; 02-20 outstanding. `tests/cli.sh`: 112 passed, 0 failed.
+35 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
+on the lab; Day 02 written, never executed; 03-20 outstanding. `tests/cli.sh`:
+127 passed, 0 failed.
