@@ -394,14 +394,14 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **142 passed, 0 failed** (was 127; Day 03's five scripts added checks) |
-| `bash -n` on all 40 shell scripts | 0 failures |
+| `tests/cli.sh` | **157 passed, 0 failed** (was 142; Day 04's five scripts added checks) |
+| `bash -n` on all 45 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
 | `lab/lab.sh netns-down` as non-root | `FAIL this subcommand needs root`, exit 1 |
 | `days/day13/verify.sh` on Ubuntu | 7 SKIP, 2 YOU, exit 0 |
-| `lab/ci-day.sh 04` | `SKIPPED (not yet implemented)`, exit 0 |
+| `lab/ci-day.sh 04` | no longer skips: `days/day04/scripts/setup.sh` now exists, so CI executes it and then `verify.sh`. **Never yet run on a real runner** |
 | `lab/ci-day.sh 99` / no argument | exit 2 with usage |
 | First real CI run (2026-09-04) | days 04, 06, 10 green; 07, 08, 09, 18 now skip; `lint` fixed |
 | `ci.yml` structure and tabs | parses, no tabs |
@@ -888,6 +888,60 @@ differently than expected against a `nologin` account; `useradd --system
 --create-home` not creating the home directory on Rocky 9; and the exact wording
 of sudo's refusal, which `break-and-fix.sh` describes but does not parse.
 
+### Day 04 was written (2026-09-08), and has not been run
+
+Five scripts, same shape as Days 01-03: `lab-writer.sh` (payload, no root),
+`setup.sh`, `explore-storage.sh`, `break-and-fix.sh`, `teardown.sh`. Objects:
+PV on `/dev/vdb` or a loop device, VG `labvg`, LV `labdata` (512 MB), ext4,
+mount point `/srv/data`, unit `srv-data.mount`, payload installed as
+`/usr/local/bin/lab-writer`.
+
+Why each choice, so the next person does not undo one by accident:
+
+| Choice | Reason |
+|---|---|
+| LV starts at 512 MB, not the whole disk | the day is about growing it online; a full-size volume has nothing to teach |
+| ext4, not xfs | both grow mounted, only ext4 can shrink. `--hard` step 5 needs a shrink that is *refused for a reason*, not one that is impossible |
+| `.mount` unit, not `/etc/fstab` | so the filename-must-match-the-path rule can be broken on purpose in `break-and-fix.sh` step 2 |
+| real disk preferred, loop device as fallback | a loop device is real LVM but does not survive a reboot, so step 5 of the README needs the real one. `setup.sh` prints which it chose and why |
+| refuses any device with a `blkid` signature, partitions, or a mount | this is the most destructive script in the repo; `pvcreate` on the wrong device is unrecoverable |
+| never reformats an existing `labdata` | a second `setup.sh` run must not destroy the reader's data |
+
+Expected on a healthy run: **5 PASS, 2 YOU, exit 0.**
+
+**Day 04 is the first day CI actually executes.** `lab/ci-day.sh 04` finds
+`scripts/setup.sh` and runs it as root on an Ubuntu runner, which is not a lab
+VM by hostname, so `require_lab_vm` would refuse. Resolved by setting
+`LAB_ALLOW_THIS_MACHINE=1` on the day-04 matrix step only, in `ci.yml`, with a
+comment explaining it — a runner is destroyed after every job, which is the
+only thing that guard is really asking about. Rule 8 is unchanged and the
+other six CI days do not need this: days 06-09 and 18 work inside network
+namespaces, and day 10 only writes files under `ca/`.
+
+The likeliest real-world failures, in order: `lsof` not being installed on a
+minimal Rocky 9 image (`break-and-fix.sh` step 3 falls back to `/proc/PID/fd`
+and says so); `resize2fs` on a loop device inside CI behaving differently from
+one on virtio; and the ordering of `udev` settling after `lvcreate`, which can
+make `mkfs` race on a slow machine.
+
+### First real execution of any verify.sh (2026-09-08)
+
+The owner ran three days on their **Ubuntu laptop**, not on a VM. This is the
+first execution evidence in the project, and it is all off-target on purpose:
+
+| Day | Result on the laptop |
+|---|---|
+| 01 | 1 PASS, 3 FAIL, 1 YOU — the PASS is `the machine boots with no failed units`, which is about the laptop |
+| 02 | 5 SKIP, 1 YOU — `vl_need_root` caught it, the only day that degrades honestly |
+| 03 | 1 PASS, 3 FAIL, 2 YOU — the PASS is `cgroups v2 is the unified hierarchy`, true of any modern Linux |
+
+Two lessons were taken from this. A lab-VM guard in `verify-lib.sh` was
+considered and **declined** by the owner in favour of documentation, so each
+day's README now carries a bolded "Run it on \<vm\>, not on your laptop"
+paragraph that names the checks which would falsely `PASS` off the VM. And a
+sentence in Day 03's README claiming "if every check reports SKIP, systemctl is
+missing" was factually wrong and has been removed — the laptop has systemctl.
+
 ### Sandbox limitations worth knowing
 
 No shellcheck, bats, `ip`, `nft`, KVM, libvirt or network access. Verification
@@ -907,8 +961,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01, 02 and 03 are done (5 scripts each).
-   Days 03-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01, 02, 03 and 04 are done (5 scripts each).
+   Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -1007,6 +1061,6 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 .gitignore                    413 B    33 lines
 ```
 
-40 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
-on the lab; Day 02 written, never executed; 03-20 outstanding. `tests/cli.sh`:
-127 passed, 0 failed.
+45 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
+on the lab; Days 02, 03 and 04 written, never executed on a Rocky VM; 05-20
+outstanding. `tests/cli.sh`: 157 passed, 0 failed.

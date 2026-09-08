@@ -48,8 +48,20 @@ jobs:
           sudo apt-get install -y -qq iproute2 iputils-ping dnsutils unbound \
             tcpdump lvm2 openssl acl vlan
 
+      # Day 04 is the only day here that rewrites the machine it runs on: it
+      # claims a block device, makes a filesystem and mounts it. Its scripts
+      # therefore call require_lab_vm like every other state-changing script
+      # in this repo, and a GitHub runner is not a lab VM by hostname.
+      #
+      # A runner IS disposable, which is the only thing that guard is really
+      # asking about, so day 04 - and only day 04 - is given the documented
+      # override. Days 06-10 and 18 do their work inside network namespaces
+      # or in a scratch directory, so they never touch the host and never
+      # need this.
       - name: run the day
-        run: sudo bash lab/ci-day.sh ${{ matrix.day }}
+        env:
+          LAB_ALLOW_THIS_MACHINE: ${{ matrix.day == '04' && '1' || '' }}
+        run: sudo --preserve-env=LAB_ALLOW_THIS_MACHINE bash lab/ci-day.sh ${{ matrix.day }}
 
   # Tier 3 - state plainly what CI did not prove.
   coverage:
