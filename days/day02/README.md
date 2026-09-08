@@ -47,6 +47,8 @@ sudo ./days/day02/verify.sh
 
 Root is needed: asking sudo about another user's privileges is itself privileged, and the ACL check reads a `2770` directory. Without it every check reports `SKIP`, which is not a pass.
 
+**Run it on node1, not on your laptop.** Nothing inside `verify.sh` checks which machine you are on. Without `sudo` you get the honest `SKIP` list and the line `This day runs elsewhere`, but that is only because this day needs root — run it *with* `sudo` on your laptop and it will report `FAIL` for an `appsvc` account that was never meant to exist there. Red on the wrong machine means "wrong machine", not "wrong work". The only results that mean anything are the ones from a shell on the VM.
+
 CI can only lint this day. Nothing on a GitHub runner has SELinux, firewalld, systemd units you control, or a second host to reach over SSH — so the checks below are proven by running `verify.sh` on your own lab, and nowhere else.
 
 ## Scripts for today

@@ -5,8 +5,8 @@
 
 **Last updated:** 2026-09-07
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Day 01 and Day 02 scripts
-written**; Days 03-20 scripts still to write
+**Status:** scaffold complete, 20 days written, **Day 01, Day 02 and Day 03
+scripts written**; Days 04-20 scripts still to write
 **Never executed against real KVM hardware.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **127 passed, 0 failed** (was 109; Day 02's five scripts added checks) |
-| `bash -n` on all 35 shell scripts | 0 failures |
+| `tests/cli.sh` | **142 passed, 0 failed** (was 127; Day 03's five scripts added checks) |
+| `bash -n` on all 40 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -907,7 +907,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 and 02 are done (5 scripts each).
+2. **Write the day scripts.** Days 01, 02 and 03 are done (5 scripts each).
    Days 03-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1007,6 +1007,6 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 .gitignore                    413 B    33 lines
 ```
 
-35 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
+40 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; Day 02 written, never executed; 03-20 outstanding. `tests/cli.sh`:
 127 passed, 0 failed.

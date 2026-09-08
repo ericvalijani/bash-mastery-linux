@@ -41,6 +41,8 @@ Run the automatic checks with:
 ./days/day01/verify.sh
 ```
 
+**Run it on control, not on your laptop.** Nothing inside `verify.sh` checks which machine you are on, so on your laptop it runs anyway and reports `FAIL` for `lab-demo.service` — a service that was never meant to exist there. Red on the wrong machine means "wrong machine", not "wrong work". Watch the third check too: `the machine boots with no failed units` will report `PASS` about *your laptop's* boot, which proves nothing about this day. The only results that mean anything are the ones from a shell on the VM.
+
 CI can only lint this day. Nothing on a GitHub runner has SELinux, firewalld, systemd units you control, or a second host to reach over SSH — so the checks below are proven by running `verify.sh` on your own lab, and nowhere else.
 
 ## Scripts for today
