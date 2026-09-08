@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01-02 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 06 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **172 passed, 0 failed** (was 157; Day 05's five scripts added checks) |
-| `bash -n` on all 50 shell scripts | 0 failures |
+| `tests/cli.sh` | **187 passed, 0 failed** (was 172; Day 06's five scripts added checks) |
+| `bash -n` on all 55 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +925,40 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 06 was written (2026-09-08), and has not been run anywhere
+
+Five scripts: `lab-netcheck.sh` (payload), `setup.sh`, `explore-net.sh`
+(read-only tour), `break-and-fix.sh`, `teardown.sh`. All five need root,
+which is a first for this repo - `ip netns exec` is privileged and there is no
+unprivileged substitute. Objects: namespaces `client router resolver auth`,
+veth pairs `veth-cl/veth-rcl`, `veth-rs/veth-rrs`, `veth-au/veth-rau`, three
+/24s on 10.10.0/1/2, `net.ipv4.ip_forward=1` in the router namespace only.
+
+**This is the first day whose scripts do NOT source `lab/on-lab-vm.sh`, and
+that is deliberate, not an oversight of Rule 8.** A network namespace is a
+separate copy of the kernel's network stack; nothing here adds an address, a
+route or a sysctl to the namespace the host actually uses. That isolation is
+the same fact that makes Days 06-10 cost 0 MB and makes them CI-executable.
+Rule 8 exists to stop a day rewriting the reader's own machine, and this day
+cannot. No `LAB_ALLOW_THIS_MACHINE` override is needed in `ci.yml` either -
+there is no guard to override, unlike Day 04.
+
+| Choice | Why |
+|---|---|
+| `setup.sh` builds the topology itself instead of calling `lab.sh netns-up` | `ci-day.sh` prefers `scripts/setup.sh` when it exists, so adding one silently changes what CI runs for Day 06. Building it here in seven narrated steps is the day's actual content; `lab.sh netns-up` remains the one-command form for Days 07-10 and 18. Same names, same addresses, so a later day cannot tell which was used. |
+| Idempotent via `addr replace` / `route replace`, and repairing rather than dying on a second run | `lab.sh netns-up` **dies** if a namespace already exists. A reader who ran that first and then `setup.sh` would hit a dead end on line 1. `setup.sh` also clears veth ends stranded in the root namespace by a half-finished run. |
+| No `set -e` in `lab-netcheck.sh` | A reachability probe whose job is to report failures must not exit on the first one. Its exit status still reflects the network. |
+| Five failures chosen to produce four *distinguishable* symptoms | The skill being taught is reading the symptom, not the fix. Instant "unreachable" = local routing; timeout with a reachable next hop = forwarding or a filter; timeout with requests arriving = return path; timeout with everything apparently correct = `ip route get`. The README carries this as a table. |
+| `--hard` = link down with the address still present, and `/16` where `/24` belonged | Both look like working configuration. The first withdraws the connected route while `ip addr` still shows the address; the second makes the client ARP for hosts two networks away. Neither would fail a config review. |
+| Second `vl_manual` added: `you saw a ping fail in one direction only, and proved which one` | Ties failure 3 to the checklist and makes the point that a ping proves a round trip, so a failed ping never says which direction broke. Takes the day to 5 PASS, 2 YOU, matching Days 04 and 05. |
+| `10.10.0.2` tightened to `10.10.0.2/24` in check 2 | The loose form also matched `10.10.0.20` and, worse, the `/16` of failure 5 - so break-and-fix could leave the day broken and still green. |
+
+The README departs from the Days 01-05 runbook shape in one visible way: the
+six step headings are not the VM sequence (`bring up node1`, `copy the repo`,
+`prove it across a reboot`). There is no VM to bring up and nothing survives a
+reboot by design, so step 1 is "No VM today" and step 5 is the check. Days 07,
+08, 09 and 18 should follow **Day 06's** headings, not Day 05's.
+
 ### Day 04 was written (2026-09-08), and RAN GREEN on node1
 
 First day after Day 01 to be executed on a real Rocky VM. Final result:
@@ -1026,7 +1060,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 05 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 06 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1128,4 +1162,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM; 06-20 outstanding. `tests/cli.sh`: 172 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Day 06 written and never executed anywhere - it needs no VM, but the authoring sandbox has no `ip`, so CI is its first real run. Days 07-20 outstanding. `tests/cli.sh`: 187 passed, 0 failed.
