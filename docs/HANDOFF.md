@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **157 passed, 0 failed** (was 142; Day 04's five scripts added checks) |
-| `bash -n` on all 45 shell scripts | 0 failures |
+| `tests/cli.sh` | **172 passed, 0 failed** (was 157; Day 05's five scripts added checks) |
+| `bash -n` on all 50 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -888,7 +888,72 @@ differently than expected against a `nologin` account; `useradd --system
 --create-home` not creating the home directory on Rocky 9; and the exact wording
 of sudo's refusal, which `break-and-fix.sh` describes but does not parse.
 
-### Day 04 was written (2026-09-08), and has not been run
+### Day 05 was written (2026-09-08), and has not been run
+
+Five scripts, same shape as Days 01-04: `lab-noisy.sh` (payload, no root),
+`setup.sh`, `explore-logs.sh` (read-only tour, no root), `break-and-fix.sh`
+and `teardown.sh`. Objects: `lab-noisy.service`, `/usr/local/bin/lab-noisy`,
+`/var/log/lab-app/app.log`, `/etc/logrotate.d/lab-app`, `/var/log/journal`,
+`SystemMaxUse=200M`, chronyd, timezone UTC. Lab tier - CI lints only.
+
+The organising idea is that **two logging systems are running at once** and
+the reader has probably never seen them side by side. The payload writes one
+line per second to a plain file *and* to the journal from the same loop, so
+every comparison in the day is between two destinations fed by one process.
+
+| Choice | Why |
+|---|---|
+| Payload holds its log open on fd 3, never reopens | This is the whole of failure 1. A rename cannot reach an open descriptor, so removing `copytruncate` makes the rotated file keep growing while the tailed file stays empty. Without the held descriptor the failure cannot be demonstrated at all. |
+| `size 100k` rather than `daily` in the rule | The reader can trigger a real rotation now instead of waiting until tomorrow. |
+| `SystemMaxUse=200M`, deliberately small | Small enough that `break-and-fix.sh` can drop it to 5M and show journald deleting its own history with no error anywhere. |
+| Timezone forced to UTC | Correlation across hosts in Days 06-20. Also sets up the `TZ=` display demo in the tour: the journal stores UTC regardless. |
+| `teardown.sh` leaves the journal alone | Persistence is a machine improvement, not this day's mess, and deleting a journal is not undoable. It also produces the best line in the day: the service is gone and `journalctl -t lab-noisy` still has its history. |
+| Clock moved forward, not backward, in failure 3 | Backwards time breaks `make`, databases and certificate validity. Forward is enough to make `--since "5 min ago"` miss real entries. |
+
+**One check was tightened rather than left on the weak list.** The generator's
+`a logrotate rule exists for your own log` was `ls /etc/logrotate.d/ | grep -q .`,
+which passes on any stock machine because the distro ships rules of its own. It
+now requires `/etc/logrotate.d/lab-app` to name `app.log` *and* contain
+`copytruncate`. The description is unchanged, so parity holds at 20/20. **Four
+weak checks remain** (d04, d07, d16, d03), down from five.
+
+A second `vl_manual` was added - `you watched a rotated log keep growing, and
+found the open descriptor` - taking the day to 5 PASS, 2 YOU, matching Day 04.
+The README checklist was updated in the same change.
+
+Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
+logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
+timedatectl` before changing anything.
+
+### Day 04 was written (2026-09-08), and RAN GREEN on node1
+
+First day after Day 01 to be executed on a real Rocky VM. Final result:
+**5 PASS, 0 FAIL, 2 YOU, exit 0**, with the ghost file found via
+`sudo lsof +L1` showing `NLINK 0` on `/srv/data/ghost.bin`. `setup.sh`, the
+live `lvextend` + `resize2fs` grow, and `break-and-fix.sh --hard` all
+completed for real.
+
+Three bugs the run exposed, all fixed:
+
+1. **No `vl_need_root` in `verify.sh`.** `vgs` and `lvs` are root-only while
+   `/proc/mounts` is world-readable, so a non-root run printed FAIL for the
+   volume group and PASS for the mount served *by* that volume group - a
+   convincing false red. The README had *documented* the hazard instead of
+   fixing it. Standing rule now: **if a day's checks read privileged state,
+   call `vl_need_root`; never substitute README prose for a missing guard.**
+2. **Bare `lab-writer` in the README.** Installed to `/usr/local/bin`, which
+   `sudo`'s `secure_path` omits on RHEL-family systems. Now called by path.
+3. **No package list.** The Rocky 9 cloud image ships neither `lvm2`,
+   `e2fsprogs` nor `lsof`, and `lab.sh` cloud-init installs nothing. Every
+   day must now name the packages it needs, and the dependency check must
+   cover every tool the whole day uses, not just setup's own.
+
+Also confirmed by the run: `./lab/lab.sh down node1` really does take the
+`add-disk` disk with it, and a rebuilt VM has no packages - `pvs`/`vgs`/`lvs`
+printing nothing is a blank machine, not a broken one. Documented in the day's
+step 3.
+
+### Day 04 as originally written
 
 Five scripts, same shape as Days 01-03: `lab-writer.sh` (payload, no root),
 `setup.sh`, `explore-storage.sh`, `break-and-fix.sh`, `teardown.sh`. Objects:
@@ -961,7 +1026,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01, 02, 03 and 04 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 05 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1061,6 +1126,6 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 .gitignore                    413 B    33 lines
 ```
 
-45 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
-on the lab; Days 02, 03 and 04 written, never executed on a Rocky VM; 05-20
-outstanding. `tests/cli.sh`: 157 passed, 0 failed.
+50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
+on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
+Days 02, 03 and 05 written, never executed on a Rocky VM; 06-20 outstanding. `tests/cli.sh`: 172 passed, 0 failed.
