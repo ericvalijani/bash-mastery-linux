@@ -79,7 +79,7 @@ CI executes this day for real, on every push. The runner installs `dnsutils` and
 | Script | What it does | Root? |
 |---|---|---|
 | `lab-nameserver.sh` | The payload: a small authoritative nameserver for four names, in about sixty lines. Logs every query with the asker's address, which is what makes "did the packet arrive?" answerable rather than guessable. Written in Python because a DNS answer is a byte layout, not text you can fake with `printf`. | yes |
-| `setup.sh` | Checks Day 06's topology is up, installs the payload, writes the client's own `resolv.conf`, `nsswitch.conf` and `hosts` under `/etc/netns/`, starts the nameserver in the `resolver` namespace, then proves both paths answer **and that they disagree**. Idempotent - run it twice and the second run restarts cleanly. | yes |
+| `setup.sh` | Builds Day 06's topology if it is missing (a reboot removes it, so that is the normal case, not an error), installs the payload, writes the client's own `resolv.conf`, `nsswitch.conf` and `hosts` under `/etc/netns/`, starts the nameserver in the `resolver` namespace, then proves both paths answer **and that they disagree**. Idempotent - run it twice and the second run restarts cleanly. | yes |
 | `explore-dns.sh` | Read-only tour in twelve sections: the two different `/etc/resolv.conf` files, the same name asked two ways, a name only DNS knows, a name nobody knows, why `dig localhost` returns nothing, reading the `aa` flag, and the server-side log of everything you just asked. | yes |
 | `break-and-fix.sh` | Three failures, each repaired: `files` dropped from nsswitch, a nameserver address that nothing answers on, and a nameserver that is stopped rather than absent. `--hard` adds two that read as correct configuration - a trailing dot in `/etc/hosts`, and the right file in the wrong namespace. | yes |
 | `teardown.sh` | Stops the nameserver, removes the per-namespace files, and shows the client falling back to your machine's own resolver - without anything being unmounted, which explains what the bind mount really was. Leaves Day 06's namespaces alone, because Days 08, 09 and 18 need them. | yes |
@@ -102,10 +102,10 @@ The base image stays cached, so `up` next time takes a minute, not a download.
 
 ### 2. Check the topology and the tools
 
-Today builds on Day 06 rather than rebuilding it. If you have rebooted since, the namespaces are gone - they live in the running kernel and never survive:
+Today resolves across Day 06's network. Namespaces live in the running kernel and never survive a reboot, so if you have rebooted since Day 06 they are simply gone - which is why `setup.sh` rebuilds them for you rather than complaining. You can also do it yourself first if you prefer to watch it happen:
 
 ```bash
-sudo ./days/day06/scripts/setup.sh   # or: sudo ./lab/lab.sh netns-up
+sudo ./days/day06/scripts/setup.sh   # optional - or: sudo ./lab/lab.sh netns-up
 command -v ip getent dig python3
 ```
 

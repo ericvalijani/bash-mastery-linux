@@ -54,13 +54,45 @@ fi
 echo "ok    ip, getent, dig and python3 are all present"
 
 # ---------------------------------------------------------------------------
-say "1. checking Day 06's topology is up"
+say "1. making sure Day 06's topology is up"
 
-# Day 07 does not build a network. It borrows one. If you skipped Day 06 or
-# rebooted since, there is nothing to resolve across.
+# Day 07 does not invent a network - it resolves across Day 06's. But it does
+# not assume one either, because namespaces live in the running kernel and
+# never survive a reboot. A missing topology is the NORMAL case, not an error:
+# it happens after every reboot, and on a fresh CI runner every single time.
+#
+# So build it if it is absent. Day 06's setup.sh is idempotent by design, so
+# calling it here is safe whether the topology is missing, complete, or half
+# built by an interrupted run.
+DAY06_SETUP="$HERE_DIR/../../day06/scripts/setup.sh"
+
+need_topology="no"
 for ns in "$NS_CLIENT" "$NS_RESOLVER"; do
-  ip netns list | grep -qw "$ns" || die "no '$ns' namespace - run Day 06 first:
+  ip netns list | grep -qw "$ns" || need_topology="yes"
+done
+
+if [[ "$need_topology" == "yes" ]]; then
+  echo "the '$NS_CLIENT' or '$NS_RESOLVER' namespace is missing - building the"
+  echo "topology first. This is Day 06's work, and it is what a reboot removes."
+  echo
+  if [[ -x "$DAY06_SETUP" ]]; then
+    bash "$DAY06_SETUP" || die "Day 06's setup.sh failed - fix that first:
   sudo ./days/day06/scripts/setup.sh"
+  elif [[ -x "$HERE_DIR/../../../lab/lab.sh" ]]; then
+    bash "$HERE_DIR/../../../lab/lab.sh" netns-up ||
+      die "could not build the topology with lab.sh netns-up"
+  else
+    die "no '$NS_CLIENT' namespace, and Day 06's setup.sh is not where it
+  should be. Build the topology first:
+  sudo ./days/day06/scripts/setup.sh"
+  fi
+  say "1b. back in Day 07 - the topology is up"
+fi
+
+# Whether it was already there or just built, prove it works before relying
+# on it. A namespace existing is not the same as a packet crossing.
+for ns in "$NS_CLIENT" "$NS_RESOLVER"; do
+  ip netns list | grep -qw "$ns" || die "still no '$ns' namespace after building"
 done
 
 ip netns exec "$NS_CLIENT" ping -c1 -W2 "$RESOLVER_IP" >/dev/null 2>&1 ||
