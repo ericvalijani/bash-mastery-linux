@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 06 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 07 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **187 passed, 0 failed** (was 172; Day 06's five scripts added checks) |
-| `bash -n` on all 55 shell scripts | 0 failures |
+| `tests/cli.sh` | **202 passed, 0 failed** (was 187; Day 07's five scripts added checks) |
+| `bash -n` on all 60 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +925,55 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 07 was written (2026-09-09), and its payload was run, but the day was not
+
+Five scripts: `lab-nameserver.sh` (payload), `setup.sh`, `explore-dns.sh`
+(read-only tour, twelve sections), `break-and-fix.sh`, `teardown.sh`. All five
+need root, like Day 06. No `on-lab-vm.sh` guard, for the Day 06 reasons -
+everything it writes lives under `/etc/netns/<ns>/` and is invisible outside
+the namespace it belongs to. No `ci.yml` override needed.
+
+Objects: `/usr/local/bin/lab-nameserver`, `/etc/netns/client/{resolv.conf,
+nsswitch.conf,hosts}`, `/etc/netns/resolver/resolv.conf`,
+`/run/lab-nameserver.pid`, `/var/log/lab-nameserver.log`, backups in
+`/root/day07-backup`. Zone served: `lab.test`, `www.lab.test`,
+`auth.lab.test` -> 10.10.2.2, `client.lab.test` -> 10.10.0.2. The hosts file
+says `www.lab.test` is 10.10.0.99, so `getent` and `dig` disagree on purpose.
+
+**The payload WAS executed in the authoring sandbox and works.** `sudo
+./lab-nameserver.sh serve 127.0.0.1`, then `dig @127.0.0.1`: A records
+returned with the right TTL and address, NXDOMAIN for an unknown name, and
+every query logged with the asker's address. What could NOT be run is the day
+itself, because the sandbox still has no `ip` binary and no network to install
+one - so `setup.sh`, `explore-dns.sh`, `break-and-fix.sh`, `teardown.sh` and
+`verify.sh` are linted only, and CI is their first real run.
+
+| Choice | Why |
+|---|---|
+| A hand-written ~60-line Python nameserver instead of `dnsmasq` or `unbound` | Day 08 is "Running DNS: authoritative and recursive" and owns `unbound`. If Day 07 configured a real server there would be nothing left for Day 08 to teach. The payload also needs no package that a CI runner might not have: `python3` is everywhere, and a DNS answer is a byte layout, so it cannot be faked with `printf` and netcat. |
+| Day 07 does not build the network; it checks Day 06's and dies with the exact command if it is missing | First real inter-day dependency. Namespaces do not survive a reboot, so "run Day 06's setup again" is the normal case, not an error. `setup.sh` also pings 10.10.1.2 before doing anything, so a broken Day 06 is reported as a Day 06 problem. |
+| Per-namespace config via `/etc/netns/<ns>/` rather than editing `/etc/resolv.conf` | This is the day's best single fact: `ip netns exec` bind-mounts `/etc/netns/NAME/foo` over `/etc/foo` for the life of that one command. It is also what makes the day safe on a reader's laptop and what makes failure 5 possible. |
+| `setup.sh` *fails* if `dig` and `getent` ever agree about `www.lab.test` | If they agree, the hosts entry is not being read and the entire day teaches nothing. Better to stop at setup than to have the reader work through a tour whose premise is silently false. |
+| Four of the five failures print no error at all | The thesis of the day: DNS failures are mostly not errors, they are correct answers from the wrong layer. Failure 1 (drop `files` from nsswitch) is the sharpest - `getent` starts *agreeing* with `dig`, and a pinned address silently stops applying. |
+| `--hard` = trailing dot in `/etc/hosts`, and the right file in the wrong `/etc/netns` directory | Both pass a configuration review. `/etc/hosts` matches literal strings, so `www.lab.test.` never matches `www.lab.test`; and `grep -r` finds a misfiled hosts entry immediately, which is exactly why people believe it is being used. |
+| Failure 3 uses SIGSTOP, not SIGTERM | Distinguishes timeout (socket open, nobody reading) from connection-refused (nothing listening) from NXDOMAIN (a server said no). All three get reported as "DNS is broken". `teardown.sh` sends SIGCONT before SIGTERM for this reason - a stopped process cannot act on SIGTERM. |
+
+**`verify.sh` was rewritten, not extended.** The stub had two checks that
+could pass without the day being done: `grep -qE "^hosts:" /etc/nsswitch.conf`
+read the *host's* file, which is `files dns` on nearly every Linux machine;
+and the nameserver check ended in `|| ip netns exec client cat
+/etc/resolv.conf`, which succeeds whenever the file exists. Both now read from
+inside the namespace and match on the exact address. This clears one of the
+four known weak checks (the d07 one). A fifth check was added, `the nameserver
+answers from the resolver namespace`, taking the day to 5 PASS + 2 YOU and
+matching Days 04-06. `vl_need ip getent dig` + `vl_need_root`.
+
+README is 176 lines and follows **Day 06's** host-day headings, not Day 05's
+VM sequence. It carries the layer diagram, a five-failures table, and states
+plainly that `dig` is a DNS client rather than a resolver - it reads
+`resolv.conf` only to find a socket, and never reads `nsswitch.conf` or
+`/etc/hosts`.
+
 ### Day 06 was written (2026-09-08), and has not been run anywhere
 
 Five scripts: `lab-netcheck.sh` (payload), `setup.sh`, `explore-net.sh`
@@ -1060,7 +1109,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 06 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 07 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1162,4 +1211,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Day 06 written and never executed anywhere - it needs no VM, but the authoring sandbox has no `ip`, so CI is its first real run. Days 07-20 outstanding. `tests/cli.sh`: 187 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06 and 07 written and never executed anywhere - they need no VM, but the authoring sandbox has no `ip`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Days 08-20 outstanding. `tests/cli.sh`: 202 passed, 0 failed.

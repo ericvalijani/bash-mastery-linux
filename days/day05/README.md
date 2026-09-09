@@ -141,8 +141,6 @@ sudo logrotate -d /etc/logrotate.d/lab-app
 
 Read its output properly and find the line that says whether the log needs rotating and why. `-d` changes nothing, which is what makes it the only safe way to test a rule. That is the first `YOU`.
 
-Two lines in that output look like failures and are not. `error opening state file /var/lib/logrotate/logrotate.status: No such file or directory` means logrotate has never actually run on this machine yet, so its record of what it rotated and when does not exist; it carries on with an empty one, and `-d` cannot create the file because `-d` writes nothing at all. And `log does not need rotating (log size is below the 'size' threshold)` is the correct verdict, not a broken rule — at one line per second the log needs somewhere over fifteen minutes to reach 100k. A rule that declines until it is supposed to fire is a rule working. If you want to see it fire now, do the next step first and then run the dry run again.
-
 Then force a real rotation and watch what happens to the file you are tailing:
 
 ```bash
