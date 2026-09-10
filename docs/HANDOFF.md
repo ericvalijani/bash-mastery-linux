@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 09 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 10 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **232 passed, 0 failed** (was 217; Day 09's five scripts added checks) |
-| `bash -n` on all 70 shell scripts | 0 failures |
+| `tests/cli.sh` | **247 passed, 0 failed** (was 232; Day 10's five scripts added checks) |
+| `bash -n` on all 75 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +925,47 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 10 was written (2026-09-10) and RAN GREEN in the authoring sandbox
+
+Day 10 is the first day since Day 04 that could be executed where it was
+written, because it needs only `openssl` - no namespaces, no VM, no `ip`.
+Setup, verify, the tour, `break-and-fix.sh --hard` and teardown were all run
+end to end here: **7 passed, 0 failed, 2 YOU**. The header row says
+"Host: openssl only, no namespaces", changed from the stub's
+"Host: network namespaces", because the day does not use them.
+
+Everything lives in `/etc/lab-tls` (mode 0700), plus `/run/lab-tls` for the
+pidfile and the server log, and `/usr/local/bin/lab-tls` for the payload.
+The CA is self-signed with `basicConstraints=critical,CA:TRUE` and
+`keyUsage=critical,keyCertSign,cRLSign`, valid 3650 days. Three leaves are
+issued by one `issue()` function that differs only in SAN and dates:
+`server.crt` (SAN www.lab.test, 365 days), `wrongname.crt` (SAN
+other.lab.test), and `expired.crt` (`-not_before` 30 days ago,
+`-not_after` yesterday, with a `-days -1` fallback for older openssl).
+Every leaf gets `basicConstraints=CA:FALSE`, `keyUsage`, `serverAuth`, and a
+SAN list including `localhost` and `IP:127.0.0.1` so the server can be
+reached on loopback.
+
+The teaching point the scripts are built around: `openssl verify` accepts
+`wrongname.crt` because it checks the chain and the dates and is never told
+what hostname you wanted. Hostname matching is the client's job
+(`-verify_hostname`), which is why chain, dates and hostname are reported
+separately by `lab-tls` and by every case in `break-and-fix.sh`.
+
+`s_server` runs as `nohup openssl s_server -accept 4433 -naccept 200 -www`
+with its pid in `/run/lab-tls/s_server.pid`. `break-and-fix.sh` swaps the
+served certificate with a `serve()` helper rather than editing files, and a
+`trap restore EXIT INT TERM` puts the good pair back. Case 4 (cert with the
+wrong key) is the only case where the SERVER fails to start; it was verified
+to print `key values mismatch` from the real openssl log.
+
+Verify has seven automatic checks, one of them negative: a handshake with no
+`-CAfile` must be REFUSED. Teardown stops the pidfile server, then kills any
+stray `s_server` on 4433 by `pgrep`, then proves the port is free with `ss`
+- the Day 08 stray-daemon lesson applied to a port instead of a namespace.
+Nothing is ever added to a system trust store; Day 17 is the day that does
+that, and it reuses this CA.
+
 ### Day 09 was written (2026-09-10) and has not been run locally
 
 Day 09 adds no topology. It reuses Day 06's four namespaces and installs one
@@ -1184,7 +1225,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 08 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 10 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
