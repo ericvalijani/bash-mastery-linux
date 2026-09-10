@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 07 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 08 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **202 passed, 0 failed** (was 187; Day 07's five scripts added checks) |
-| `bash -n` on all 60 shell scripts | 0 failures |
+| `tests/cli.sh` | **217 passed, 0 failed** (was 202; Day 08's five scripts added checks) |
+| `bash -n` on all 65 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +925,48 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 08 was written (2026-09-09) and has not been run locally
+
+Five scripts: `lab-dnsq.sh` (payload), `setup.sh`, `explore-dns-server.sh`
+(read-only tour, twelve sections), `break-and-fix.sh`, `teardown.sh`. All five
+need root, like Days 06 and 07. No `on-lab-vm.sh` guard, same reason: namespaces
+cannot reach the host's own stack. CI executes this day for real.
+
+The authoring sandbox has neither `ip` nor `unbound`, so nothing here was
+executed. Every config was written against the unbound documentation and is
+validated at runtime by `unbound-checkconf` before the daemon reads it, which
+is the strongest guarantee available without running it. CI is the first real
+run.
+
+| Decision | Why |
+|---|---|
+| `unbound` for BOTH halves, not bind for one | `ci.yml` already installs `unbound` and nothing else DNS-serving. One binary doing both jobs is also the better lesson: `local-zone: "lab.test." static` is the entire difference between authoritative and recursive |
+| Configs under `/etc/unbound/lab/`, started with explicit `-c` | Never touches the distribution's own `unbound.conf` or its service. A reader with unbound already running on port 53 is unaffected, because both instances live in namespaces |
+| `local-zone: "." refuse` on the auth server | Makes it non-recursive, which produces `REFUSED` for outside names. That gives the day three distinguishable rejections - NXDOMAIN, SERVFAIL, REFUSED - instead of two |
+| `private-domain: "lab.test."` on the resolver | Without it unbound strips RFC1918 answers as DNS-rebinding protection and every reply comes back NOERROR with zero answers, nothing logged. The single most confusing failure available in this stack, so it is called out in the README's Notes |
+| `www.lab.test` TTL is 30 seconds | A full cache expiry is watchable inside a minute. `--hard` then sets the same record to 86400 to show a correct, completed migration serving the old address for a day |
+| `setup.sh` kills Day 07's nameserver | It holds `10.10.1.2:53`. Otherwise unbound fails with "address already in use" and the reader debugs today's config instead of yesterday's leftovers |
+| Payload is a query tool, not a daemon | unbound IS the daemon today. `lab-dnsq` asks both servers and prints status/flags/TTL/answer aligned, so "run it twice" makes the cache visible with no tooling |
+| Day 06's topology rebuilt, not required | The rule earned by Day 07's CI failure - see below |
+
+The reader's first run found one bug: unbound ships a built-in `local-zone` for
+the reserved TLD `.test` (RFC 6761) that answers NXDOMAIN before any `stub-zone`
+is consulted, so the resolver denied every name while the authoritative server
+answered correctly. The tell was the SOA in the reply naming `localhost.`. Fixed
+with `local-zone: "lab.test." nodefault` and `domain-insecure` on the resolver.
+Same class of default as `private-domain`; Days 10, 12 and 17 inherit both.
+
+Also fixed then: `lab-dnsq` keyed answer/TTL extraction on the query type, so a
+CNAME reply printed `-` for both, and the README wrongly claimed a CNAME returns
+two records - a static local-zone does not chase the alias.
+
+Verify checks were all five tightened from the generator's stubs, which had
+`grep -q .` on three of them (any answer at all would pass). They now match
+exact addresses and the SOA's own mname/rname. `vl_need dig ip ss` gained `ss`,
+which check one needs. A second `vl_manual` was added - naming what REFUSED,
+SERVFAIL and NXDOMAIN each mean - and the README's manual list was updated in
+the same change, because parity compares descriptions.
+
 ### Day 07 was written (2026-09-09), and its payload was run, but the day was not
 
 Five scripts: `lab-nameserver.sh` (payload), `setup.sh`, `explore-dns.sh`
@@ -1109,7 +1151,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 07 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 08 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1211,4 +1253,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06 and 07 written and never executed anywhere - they need no VM, but the authoring sandbox has no `ip`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Days 08-20 outstanding. `tests/cli.sh`: 202 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding. `tests/cli.sh`: 217 passed, 0 failed.
