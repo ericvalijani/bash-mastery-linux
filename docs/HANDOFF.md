@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 08 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 09 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **217 passed, 0 failed** (was 202; Day 08's five scripts added checks) |
-| `bash -n` on all 65 shell scripts | 0 failures |
+| `tests/cli.sh` | **232 passed, 0 failed** (was 217; Day 09's five scripts added checks) |
+| `bash -n` on all 70 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -924,6 +924,39 @@ The README checklist was updated in the same change.
 Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
+
+### Day 09 was written (2026-09-10) and has not been run locally
+
+Day 09 adds no topology. It reuses Day 06's four namespaces and installs one
+observer, `/usr/local/bin/lab-trace`, plus a capture directory at
+`/var/log/lab-trace`. `setup.sh` rebuilds Day 06's topology if a namespace is
+missing (same idiom as Days 07 and 08), then takes one real capture at
+`router:veth-rcl` and reads it back, so the day proves its own tooling before
+teaching with it.
+
+The interface to watch is `veth-rcl`, the router's end of the client's veth
+pair. Capturing in the middle is the whole point: it is the only place that
+can tell "never sent" apart from "never arrived".
+
+`break-and-fix.sh` has five cases. Three are loud (interface down, no route,
+far end with no route back) and two are behind `--hard`: an MTU of 1280 that
+passes ping and refuses `-M do -s 1400`, and a permanent bogus ARP entry for
+10.10.0.1. All are undone by a `trap restore EXIT INT TERM`, so an interrupt
+cannot leave the network broken.
+
+Every capture uses `tcpdump -c N -w FILE` started one second before the
+traffic and killed afterwards if `-c` did not end it. That pattern lives in
+one function, `capture_probe`, rather than being copied per case.
+
+Day 08's DNS is optional for Day 09. Setup reports whether the resolver is
+still on :53 and continues either way, so CI does not depend on Day 08
+having run.
+
+Also fixed in this pass: Day 08's `teardown.sh` no longer asserts "Nothing,
+after a two second wait" without reading the command's output. It captures
+the answer and branches - empty means the timeout paragraph, non-empty means
+a paragraph explaining that a name still resolving after its server is gone
+is the most misleading state in DNS, with two commands to find who answered.
 
 ### Day 08 was written (2026-09-09) and has not been run locally
 

@@ -45,11 +45,31 @@ say "what the client gets now"
 # than wrong.
 if ip netns list 2>/dev/null | grep -qw client; then
   printf '$ ip netns exec client dig +time=2 +tries=1 +short A www.%s\n' "$ZONE"
-  ip netns exec client dig +time=2 +tries=1 +short A "www.$ZONE" 2>&1 | sed 's/^/  /' || true
+  # Capture it instead of asserting what it will say. What you get depends on
+  # what is still standing, and the honest lesson is in reading the result -
+  # not in a paragraph that was written before the command ran.
+  gone_answer="$(ip netns exec client dig +time=2 +tries=1 +short A "www.$ZONE" 2>/dev/null || true)"
+  if [[ -n "$gone_answer" ]]; then
+    printf '  %s\n' "$gone_answer"
+  fi
   echo
-  echo "  Nothing, after a two second wait. There is no server on $RESOLVER_IP"
-  echo "  any more, so the query is not refused or denied - it goes unanswered."
-  echo "  A timeout is the one DNS failure that costs the caller real time."
+  if [[ -z "$gone_answer" ]]; then
+    echo "  Nothing, after a two second wait. There is no server on $RESOLVER_IP"
+    echo "  any more, so the query is not refused or denied - it goes unanswered."
+    echo "  A timeout is the one DNS failure that costs the caller real time."
+  else
+    echo "  You still got an address, and that is worth more than a timeout would"
+    echo "  have been. The resolver on $RESOLVER_IP is stopped, so this answer came"
+    echo "  from somewhere else: another nameserver listed in the client's"
+    echo "  resolv.conf, or a stub resolver of its own that kept a copy. A name"
+    echo "  that still resolves after you turned the server off is the most"
+    echo "  misleading state in DNS - the thing you decommissioned looks fine"
+    echo "  until the last cached copy expires."
+    echo
+    echo "  Find out who answered:"
+    echo "    ip netns exec client cat /etc/resolv.conf"
+    echo "    ip netns exec client dig A www.$ZONE | sed -n '/SERVER/p'"
+  fi
 fi
 
 say "removing today's files"

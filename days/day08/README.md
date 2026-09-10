@@ -17,7 +17,7 @@ Yesterday you followed a name through the layers that could answer it, and the t
 
 Those two servers are different in kind, not in configuration. One owns data and has the right to say a name does not exist. The other owns nothing and remembers everything. Almost every confusing DNS incident is the gap between them.
 
-```
+```text
   client 10.10.0.2 ---> resolver 10.10.1.2 ---> auth 10.10.2.2
                         unbound, recursive      unbound, authoritative
                         caches, owns nothing    owns lab.test, caches nothing
