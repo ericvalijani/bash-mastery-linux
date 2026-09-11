@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 10 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 11 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -394,8 +394,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **247 passed, 0 failed** (was 232; Day 10's five scripts added checks) |
-| `bash -n` on all 75 shell scripts | 0 failures |
+| `tests/cli.sh` | **262 passed, 0 failed** (was 247; Day 11's five scripts added checks) |
+| `bash -n` on all 80 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +925,48 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 11 was written (2026-09-10)
+
+Day 11 is a VM day - `node1`, Rocky 9 - and the first VM day since Day 05,
+because Days 06 to 10 needed no virtual machine at all. Every script sources
+`lab/on-lab-vm.sh` and calls `require_lab_vm`, per Rule 8. It cannot be run
+in the authoring sandbox or in CI: no firewalld, no nftables, no systemd
+units to own. CI lints it and nothing more, which the README says plainly.
+
+The day builds both halves of reachability, because a firewall with nothing
+behind it teaches nothing. `setup.sh` starts and enables firewalld, forces
+the default zone to `public`, installs `/usr/local/bin/lab-web` (a one-line
+`python3 -m http.server 8080 --bind 0.0.0.0`) as `lab-web.service`, opens
+8080/tcp permanently AND reloads, adds one rich rule (9090/tcp from
+127.0.0.0/8 only), and then prints the `nft` chains its own commands
+produced.
+
+The spine of the day is that "is the port open" is three questions answered
+by three programs: `ss` (is anything listening), `firewall-cmd` (what the
+policy intends, runtime and permanent separately), and `nft` (what the
+kernel will actually do). The payload `lab-fw` prints all three side by
+side and names the mismatch; with no argument it ends in a "where the two
+disagree" section that lists open ports with no listener and listeners the
+firewall blocks.
+
+`break-and-fix.sh` has three cases plus two behind `--hard`: a runtime-only
+change that vanishes at the next reload, an open port with the service
+stopped, the `trusted` default zone (a healthy firewalld enforcing nothing
+- which is exactly what verify's fifth check exists to catch), then
+`--hard` adds a second nftables table hooked at priority -300 that drops
+the packet while `firewall-cmd --query-port` keeps saying yes, and finally
+the SSH lockout, which is DESCRIBED AND NOT EXECUTED because it would end
+the reader's session with no console to recover from. `--timeout=120` is
+taught there as the habit that makes remote firewall work safe.
+
+`restore()` runs on `trap ... EXIT INT TERM`, re-adds the port, resets the
+default zone, deletes the stray nft table, restarts the service, and then
+CHECKS the result with `--query-port` and a real curl probe rather than
+assuming it - the Day 09 lesson applied here.
+
+`verify.sh` is the stub's, unchanged: five automatic checks and one manual.
+The README was written to it, parity verified.
+
 ### Day 10 was written (2026-09-10) and RAN GREEN in the authoring sandbox
 
 Day 10 is the first day since Day 04 that could be executed where it was
@@ -1225,7 +1267,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 10 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 11 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
