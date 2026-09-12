@@ -1,0 +1,36 @@
+# Day 13 - the smallest honest policy module.
+#
+# Loaded by days/day13/scripts/setup.sh with:
+#   checkmodule -M -m -o lab_selinux.mod lab_selinux.te
+#   semodule_package -o lab_selinux.pp -m lab_selinux.mod
+#   semodule -i lab_selinux.pp
+#
+# What it grants: nginx (httpd_t) may read files labelled var_log_t. That is
+# a real thing people need - a log viewer served over HTTP - and it is small
+# enough to read in one sitting, which is the point.
+#
+# Two things to notice, because they are the whole review skill:
+#
+#   1. 'require' does not grant anything. It says "these names already exist
+#      in policy", and compilation fails if they do not. Every type in an
+#      audit2allow suggestion appears here, so the require block is the list
+#      of things the rule touches.
+#
+#   2. The permissions are named individually. audit2allow would happily
+#      write 'allow httpd_t var_log_t:file *;' from a single getattr denial,
+#      and you would have granted write and unlink without ever intending to.
+#      Grant what the denial asked for, nothing else.
+#
+# Remove it with:  semodule -r lab_selinux
+
+module lab_selinux 1.0;
+
+require {
+	type httpd_t;
+	type var_log_t;
+	class dir { getattr open read search };
+	class file { getattr open read };
+}
+
+allow httpd_t var_log_t:dir { getattr open read search };
+allow httpd_t var_log_t:file { getattr open read };

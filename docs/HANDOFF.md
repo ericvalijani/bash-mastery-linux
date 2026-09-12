@@ -5,8 +5,8 @@
 
 **Last updated:** 2026-09-12
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–12 scripts written**;
-Day 12 is being validated on a real Rocky 9 lab VM
+**Status:** scaffold complete, 20 days written, **Days 01–13 scripts written**;
+Day 12 verified on a real Rocky 9 lab VM (5 PASS), Day 13 written and linted
 **Executed against real KVM hardware through Day 12.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
@@ -395,7 +395,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **277 passed, 0 failed** (was 262; Day 12's five scripts added checks) |
+| `tests/cli.sh` | **292 passed, 0 failed** (was 277; Day 13's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -926,6 +926,47 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 13 was written (2026-09-12)
+
+`days/day13/` now ships five scripts plus a policy source file, a rewritten
+README and a seven-check verify. The day is SELinux: serving `/srv/www` with
+nginx while the machine stays enforcing.
+
+Decisions worth knowing:
+
+- **Port 8080, not 80.** Rocky's `nginx.conf` already has a default server on
+  80, and a second `default_server` is an nginx error, not an SELinux one.
+  8080/tcp is already `http_cache_port_t`, so the bind succeeds and the port
+  lesson stays a deliberate exercise rather than an accident.
+- **`setup.sh` refuses to run unless SELinux is enforcing.** It will flip
+  Permissive to Enforcing, but a Disabled system needs an autorelabel and a
+  reboot, so it dies with those instructions instead of pretending.
+- **Nothing in the day ever runs `setenforce 0`.** Every fix is an fcontext
+  rule plus `restorecon`, a `semanage port` entry, a `-P` boolean, or a module
+  whose source was printed first. `--hard` describes `setenforce 0` and a full
+  filesystem relabel without performing either.
+- **The module ships as readable source.** `scripts/lab_selinux.te` grants
+  `httpd_t` read on `var_log_t` and nothing else, with the permissions named
+  individually, because the teaching point is that `audit2allow` will happily
+  write `:file *`. `setup.sh` compiles it with `checkmodule` /
+  `semodule_package`, printing the rules before `semodule -i`.
+- **`teardown.sh` removes the fcontext rule before the directory,** so no local
+  rule is left describing a path that no longer exists, and it leaves SELinux
+  enforcing because Days 14-20 assume a labelling machine.
+- Verify needs root (`semanage`, `semodule`, `restorecon` read non-world-readable
+  policy) and checks the permanent forms: `semanage fcontext -l -C`, a silent
+  `restorecon -nvR`, and `semanage boolean -l -C`.
+
+The four failures in `break-and-fix.sh`: a `chcon` that a relabel reverts, an
+httpd type that is still not readable content, an unlabelled port that refuses
+a valid bind, and a boolean that was off when no module was needed.
+
+Day 13 has **not** been run on hardware yet - the authoring sandbox has no
+policy store. CI lints it only, and the README says so.
+
+Packages the VM needs: `sudo dnf install -y nginx policycoreutils
+policycoreutils-python-utils checkpolicy setools-console audit curl`.
+
 ### Day 12 was written (2026-09-11)
 
 `days/day12/` now ships five scripts, a 233-line README and a five-check
@@ -976,11 +1017,16 @@ three portability issues, all now handled by the repository:
   `without-password` as policies that disable root password login.
 
 These fixes were applied to `setup.sh`, `verify.sh`, the related diagnostic and
-cleanup scripts, the Day 12 README, and this handoff. The executable bits on all
-five Day 12 scripts and `verify.sh` were also restored after archive merging;
-`./tests/cli.sh` then passed all 277 checks. Continue real-VM testing from
-`sudo ./scripts/setup.sh`; do not restart sshd, and keep a second terminal open
-until a new key-based login succeeds.
+cleanup scripts, the Day 12 README, and this handoff. **Day 12 then passed on
+real hardware: 5 PASS, 0 FAIL, 2 YOU** (2026-09-12). `sshd -T` on that VM
+prints `permitrootlogin without-password`, confirming the alias handling was
+necessary, and `lab-ssh root` correctly reports `REFUSED - not in any allowed
+group` because root is not in `labssh`. The executable bits on all five Day 12
+scripts and `verify.sh` were also restored after archive merging, and
+`./tests/cli.sh` is green. The remaining two Day 12 items are the manual ones:
+the ProxyJump exercise must be run from the **laptop**, not from a shell on
+`node1`, and with the address `./lab/lab.sh status` prints rather than a
+remembered one.
 
 ### Day 11 was written (2026-09-10)
 
@@ -1426,4 +1472,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding. `tests/cli.sh`: 277 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-13 which are written (Day 12 run on hardware, Day 13 lint-only so far). `tests/cli.sh`: 292 passed, 0 failed.
