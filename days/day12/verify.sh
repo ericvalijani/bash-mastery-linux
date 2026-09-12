@@ -18,9 +18,9 @@ vl_init "Day 12 — SSH hardening, bastions and fail2ban"
 vl_need fail2ban-client
 vl_need_root
 
-vl_check "password authentication is off" '/usr/sbin/sshd -T | grep -qx "passwordauthentication no"'
-vl_check "root cannot log in with a password" '/usr/sbin/sshd -T | grep -qE "^permitrootlogin (no|prohibit-password)$"'
-vl_check "login is restricted to a named user or group" '/usr/sbin/sshd -T | grep -qE "^(allowusers|allowgroups) "'
+vl_check "password authentication is off" '/usr/sbin/sshd -T | grep -x "passwordauthentication no"'
+vl_check "root cannot log in with a password" '/usr/sbin/sshd -T | grep -E "^permitrootlogin (no|prohibit-password|without-password)$"'
+vl_check "login is restricted to a named user or group" '/usr/sbin/sshd -T | grep -E "^(allowusers|allowgroups) "'
 vl_check "the config is valid" '/usr/sbin/sshd -t'
 vl_check "fail2ban is watching sshd" 'fail2ban-client status sshd'
 vl_manual "you reached node1 with ProxyJump through a bastion, and you can explain each hop"

@@ -62,7 +62,7 @@ if [ -n "$USER_ARG" ]; then
 		echo "allow list: $allowg"
 		verdict="REFUSED - not in any allowed group"
 		for g in $allowg; do
-			if id -nG "$USER_ARG" 2>/dev/null | tr ' ' '\n' | grep -qx "$g"; then
+			if id -nG "$USER_ARG" 2>/dev/null | tr ' ' '\n' | grep -x "$g" >/dev/null; then
 				verdict="allowed - member of $g"
 			fi
 		done

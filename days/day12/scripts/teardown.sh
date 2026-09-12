@@ -55,7 +55,7 @@ fi
 systemctl reload sshd 2>/dev/null || true
 
 # Prove the removal instead of trusting rm.
-if "$SSHD" -T | grep -q '^allowgroups '; then
+if "$SSHD" -T | grep '^allowgroups ' >/dev/null; then
 	bad "an allow list is still in effect: $("$SSHD" -T | grep '^allowgroups ')"
 	bad "something outside this day set it - check /etc/ssh/sshd_config.d/"
 else

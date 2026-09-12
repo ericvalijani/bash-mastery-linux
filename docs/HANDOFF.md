@@ -3,11 +3,11 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-12
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Day 01, Day 02 and Day 03
-scripts written**; Days 04-20 scripts still to write
-**Never executed against real KVM hardware.** See §8.
+**Status:** scaffold complete, 20 days written, **Days 01–12 scripts written**;
+Day 12 is being validated on a real Rocky 9 lab VM
+**Executed against real KVM hardware through Day 12.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
 ---
@@ -953,15 +953,34 @@ Decisions worth knowing:
   the README and the scripts uses the **full path**, because `sudo` on
   Rocky uses a `secure_path` that excludes `/usr/local/bin`.
 
-The five failures in `break-and-fix.sh`: a drop-in that never wins
-(60 sorts before 70, first value wins), an allow list that excludes you,
+The five failures in `break-and-fix.sh`: a later drop-in that never wins
+(00 sorts before 70, first value wins), an allow list that excludes you,
 self-ban, a `Match` block where `sshd -T` is green and `sshd -T -C` is
 not, and the unsurvivable one, described and not executed.
 
-Day 12 was exercised end to end in the authoring sandbox against mock
-`sshd`, `fail2ban-client` and `systemctl`, and not on hardware. The mock
-`sshd` implements first-value-wins and `Match` evaluation, which is how
-failures 1 and 4 were confirmed to actually behave as the text claims.
+Day 12 was first exercised end to end in the authoring sandbox against mock
+`sshd`, `fail2ban-client` and `systemctl`. Real Rocky 9 execution then exposed
+three portability issues, all now handled by the repository:
+
+- `node1` was raised from 768 MB to 2048 MB because `dnf` could be killed by
+  the OOM killer while installing EPEL and fail2ban. All memory tables and
+  launch notes were updated in the same change.
+- The managed policy is `00-lab-hardening.conf`, not `60-`, so it is read
+  before Rocky's and cloud-init's `50-*` drop-ins. Setup removes the legacy
+  `60-` filename and teardown cleans up both names.
+- With `set -o pipefail`, `sshd -T | grep -q` could report a false failure
+  after grep found its match and sshd received `SIGPIPE`. Day 12's checks now
+  consume the full output (setup captures `sshd -T` once). Rocky/OpenSSH may
+  canonicalize `PermitRootLogin prohibit-password` as the equivalent
+  `without-password`; setup and verify accept `no`, `prohibit-password`, or
+  `without-password` as policies that disable root password login.
+
+These fixes were applied to `setup.sh`, `verify.sh`, the related diagnostic and
+cleanup scripts, the Day 12 README, and this handoff. The executable bits on all
+five Day 12 scripts and `verify.sh` were also restored after archive merging;
+`./tests/cli.sh` then passed all 277 checks. Continue real-VM testing from
+`sudo ./scripts/setup.sh`; do not restart sshd, and keep a second terminal open
+until a new key-based login succeeds.
 
 ### Day 11 was written (2026-09-10)
 
@@ -1407,4 +1426,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding. `tests/cli.sh`: 217 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding. `tests/cli.sh`: 277 passed, 0 failed.

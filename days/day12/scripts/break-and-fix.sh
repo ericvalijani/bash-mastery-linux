@@ -60,9 +60,9 @@ restore() {
 	# Prove it, do not assume it. A teardown that does not check its own
 	# result is an assumption with a nice name.
 	state="ok"
-	"$SSHD" -T | grep -qx "passwordauthentication no" || state="passwords back on"
-	"$SSHD" -T | grep -q "^allowgroups .*$GROUP" || state="allow list lost $GROUP"
-	id -nG "$LOGIN_USER" | tr ' ' '\n' | grep -qx "$GROUP" || state="$LOGIN_USER not in $GROUP"
+	"$SSHD" -T | grep -x "passwordauthentication no" >/dev/null || state="passwords back on"
+	"$SSHD" -T | grep "^allowgroups .*$GROUP" >/dev/null || state="allow list lost $GROUP"
+	id -nG "$LOGIN_USER" | tr ' ' '\n' | grep -x "$GROUP" >/dev/null || state="$LOGIN_USER not in $GROUP"
 
 	if command -v fail2ban-client >/dev/null 2>&1; then
 		fail2ban-client set sshd unbanip 127.0.0.1 >/dev/null 2>&1 || true

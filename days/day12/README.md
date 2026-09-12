@@ -222,7 +222,9 @@ The order that keeps you logged in, every time:
 4. **Reload, do not restart.** `systemctl reload sshd` re-reads the config and leaves established sessions alone. A restart plus a bad policy ends the session you would have used to fix it.
 5. **Prove a new login works from a second terminal** before you close the first one.
 
-Two things worth keeping. `PermitRootLogin prohibit-password` is not `no` - root may still log in with a key, which is a reasonable choice for automation and a surprise in an audit, so decide which one you meant. And a fail2ban ban is a firewall rule, not an SSH setting: when a healthy sshd refuses a healthy client for no visible reason, `fail2ban-client status sshd` is the second thing to check and `sshd -T` is a waste of time.
+Two things worth keeping. `PermitRootLogin prohibit-password` is not `no` - root may still log in with a key, which is a reasonable choice for automation and a surprise in an audit, so decide which one you meant. Some Rocky/OpenSSH builds print the equivalent legacy spelling `permitrootlogin without-password` in `sshd -T`; the setup and verifier accept either spelling because both disable password login for root. Also avoid `producer | grep -q` for validation when `pipefail` is active: an early successful match can close the pipe, give the producer `SIGPIPE`, and make the whole pipeline look like a failure.
+
+A fail2ban ban is a firewall rule, not an SSH setting: when a healthy sshd refuses a healthy client for no visible reason, `fail2ban-client status sshd` is the second thing to check and `sshd -T` is a waste of time.
 
 The difference between someone who hardens SSH confidently and someone who does it once a year with sweaty palms is not knowledge of the keywords. It is having a second terminal open.
 

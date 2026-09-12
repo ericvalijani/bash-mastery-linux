@@ -101,7 +101,7 @@ else
 	ok "group $GROUP created"
 fi
 
-if id -nG "$LOGIN_USER" | tr ' ' '\n' | grep -qx "$GROUP"; then
+if id -nG "$LOGIN_USER" | tr ' ' '\n' | grep -x "$GROUP" >/dev/null; then
 	ok "$LOGIN_USER is already in $GROUP"
 else
 	usermod -aG "$GROUP" "$LOGIN_USER"
@@ -154,9 +154,15 @@ fi
 
 # -T prints the EFFECTIVE configuration: every keyword, resolved, after all
 # includes. It is the only honest answer to 'what is sshd actually doing'.
-for want in "passwordauthentication no" "permitrootlogin prohibit-password"; do
-	"$SSHD" -T | grep -qx "$want" || die "sshd -T does not show '$want' - something later overrides it"
-done
+# Capture it once instead of piping sshd into grep -q while pipefail is active:
+# an early grep exit can give sshd SIGPIPE and turn a successful match into a
+# failed pipeline. OpenSSH may also print the older name "without-password"
+# for the configured "prohibit-password" value; they are equivalent.
+effective="$("$SSHD" -T)"
+printf '%s\n' "$effective" | grep -x 'passwordauthentication no' >/dev/null ||
+	die "sshd -T does not show 'passwordauthentication no' - something earlier overrides it"
+printf '%s\n' "$effective" | grep -Ex 'permitrootlogin (no|prohibit-password|without-password)' >/dev/null ||
+	die "sshd -T does not disable root password login (actual: $(printf '%s\n' "$effective" | grep '^permitrootlogin ' || echo missing))"
 ok "sshd -T agrees with the file"
 
 # -C asks the question for a specific user, which is how you check an allow
