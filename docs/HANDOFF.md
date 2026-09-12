@@ -5,8 +5,8 @@
 
 **Last updated:** 2026-09-12
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–13 scripts written**;
-Day 12 verified on a real Rocky 9 lab VM (5 PASS), Day 13 written and linted
+**Status:** scaffold complete, 20 days written, **Days 01–14 scripts written**;
+Days 12 and 13 verified on a real Rocky 9 lab VM, Day 14 written and linted
 **Executed against real KVM hardware through Day 12.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 12 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 14 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -395,7 +395,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **292 passed, 0 failed** (was 277; Day 13's five scripts added checks) |
+| `tests/cli.sh` | **307 passed, 0 failed** (was 292; Day 14's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -926,6 +926,76 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 14 was written (2026-09-12)
+
+`days/day14/` ships five scripts, a rewritten README and a six-check verify.
+The day is Ansible fundamentals: `control` manages `node1`, and the whole day
+is built around one measurement - the second run reports `changed=0`.
+
+Decisions worth knowing:
+
+- **This is the only day whose `setup.sh` refuses root.** The project lives in
+  `$HOME`, Ansible connects as the lab user with the lab user's key, and
+  `become` is per task. Run it with sudo and the project is owned by root,
+  `~/.ssh` is `/root/.ssh`, and every task fails as UNREACHABLE for a reason
+  that has nothing to do with the day. `verify.sh` makes "not root" its first
+  check for the same reason - that is the sixth check the stub did not have.
+- **The credential is the prerequisite, and it is explicit.** `control` holds
+  nothing node1 trusts, so the README adds a second push:
+  `./lab/lab.sh push control ~/.ssh/id_ed25519`. `setup.sh` installs
+  `~/lab/id_ed25519` as `~/.ssh/id_ed25519` mode 0600, deletes the pushed
+  copy, and then proves plain `ssh` works before writing any inventory. Both
+  the README and the script say plainly that a private key on a control node
+  is a real-world tradeoff, not a pattern.
+- **node1's address is an argument, not a guess.** `control` cannot run
+  `virsh`, so `setup.sh` takes the address as `$1` or `$NODE1`, otherwise
+  reuses the one in the existing inventory, otherwise dies pointing at
+  `./lab/lab.sh status`. A stale DHCP lease is the most common cause of a
+  hung run.
+- **The project is `~/ansible-lab`**, holding `ansible.cfg`,
+  `inventory/hosts.ini` and `inventory/hosts.yml` (the same hosts in both
+  formats, so `ansible-inventory --graph` can be compared), `group_vars/`,
+  `host_vars/`, `files/`, `templates/`, `site.yml`, and `not-idempotent.yml`.
+- **`site.yml` notifies a handler on `rsyslog`,** not nginx or chronyd.
+  `/etc/rsyslog.d/*.conf` is definitely included on Rocky 9, rsyslog ships
+  installed, restarting it is harmless, and it calls back to Day 05. Day 13
+  already owns nginx on node1, so the two days do not collide.
+- **`teardown.sh` is itself a playbook** with every state inverted, and it
+  deliberately leaves `rsyslog` installed and running because the
+  distribution shipped it. It keeps `~/ansible-lab` unless given `--all`,
+  since Day 15 turns `site.yml` into a role.
+- `break-and-fix.sh` writes its broken plays to `/tmp/day14-broken`, never
+  into the project, and finishes by re-applying `site.yml` twice.
+- **Fixed after the first hardware run (2026-09-12):** `site.yml` had `copy`
+  owning `/etc/lab-day14/lab-day14.txt` and `lineinfile` adding `owner=` to
+  that same file. Two tasks owning one file is the fighting-tasks bug: `copy`
+  restored its checksum, `lineinfile` re-added its line, and every run reported
+  `changed=2` forever, so `verify.sh`'s second-run check failed on an
+  otherwise-correct lab. The `lineinfile` task now owns
+  `/etc/lab-day14/settings.conf` with `create: true`, and the task comment
+  explains the rule: either `copy`/`template` owns a file entirely, or
+  `lineinfile` edits a file a package owns. `break-and-fix.sh` case 2 already
+  used `settings.conf`, and its cleanup removing the file is harmless because
+  the next `site.yml` run recreates it.
+- **Also fixed after that run:** `setup.sh`'s SSH precheck printed only
+  "ssh failed". It now shows the real `ssh -v` error and classifies it (no
+  route, refused, key rejected including Day 12's `AllowGroups labssh` and a
+  fail2ban ban), and it refuses an address belonging to `control` itself. The
+  README no longer presents any address as anything but an example, because
+  the first hardware run used the README's `192.168.122.42` verbatim.
+
+The four failures: `command`/`shell` instead of a module (works, reports
+changed forever, and is skipped by `--check` so the dry run predicts nothing),
+`lineinfile` with no `regexp` (idempotent for one value, appending for the
+next), handler expectations (no change means no restart; a failed play drops
+pending handlers), and a missing `become`.
+
+Day 14 has **not** been run on hardware yet - the authoring sandbox has no
+second host. CI lints it only.
+
+Packages the control VM needs: `sudo dnf install -y ansible-core`. The managed
+host needs nothing beyond the Python Rocky already ships.
+
 ### Day 13 was written (2026-09-12)
 
 `days/day13/` now ships five scripts plus a policy source file, a rewritten
@@ -961,8 +1031,9 @@ The four failures in `break-and-fix.sh`: a `chcon` that a relabel reverts, an
 httpd type that is still not readable content, an unlabelled port that refuses
 a valid bind, and a boolean that was off when no module was needed.
 
-Day 13 has **not** been run on hardware yet - the authoring sandbox has no
-policy store. CI lints it only, and the README says so.
+Day 13 **passed on real hardware: 7 PASS, 0 FAIL, 2 YOU** (2026-09-12), on
+`node1` with SELinux enforcing throughout. CI still only lints it - a GitHub
+runner has no policy store.
 
 Packages the VM needs: `sudo dnf install -y nginx policycoreutils
 policycoreutils-python-utils checkpolicy setools-console audit curl`.
@@ -1370,7 +1441,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 12 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 14 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
@@ -1472,4 +1543,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-13 which are written (Day 12 run on hardware, Day 13 lint-only so far). `tests/cli.sh`: 292 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-14 which are written (Days 12 and 13 run on hardware, Day 14 lint-only so far). `tests/cli.sh`: 307 passed, 0 failed.
