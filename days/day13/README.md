@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Hardening and configuration management |
 | **Runs on** | VM: node1 |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists

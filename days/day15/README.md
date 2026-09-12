@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Hardening and configuration management |
 | **Runs on** | control -> node1 + node2 |
-| **Memory** | ~2.5 GB (three VMs) |
+| **Memory** | ~3.8 GB (three VMs) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists

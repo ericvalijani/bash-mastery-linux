@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Hardening and configuration management |
 | **Runs on** | VM: node1 |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -19,12 +19,12 @@ So today you build both halves - a real service and the policy in front of it - 
 
 ## What you will work with
 
-- `firewall-cmd --list-all, --zone`
-- `--add-port / --add-service, --permanent, --reload`
-- `rich rules`
-- `nft list ruleset`
-- `nft chains, hooks and priorities`
-- `ss -tulpn to confirm exposure`
+- **`firewall-cmd --list-all` and `--zone`** - inspect the active firewalld policy instead of assuming which zone applies. Interfaces and sources are assigned to zones, and a perfectly written rule in the wrong zone protects nothing.
+- **`--add-port`, `--add-service`, `--permanent`, and `--reload`** - distinguish the live runtime policy from the saved policy used after a reboot. You will make temporary changes, persist the ones you intend to keep, and prove that a reload produces the expected result.
+- **Rich rules** - express conditions that a simple open port cannot, including source addresses, logging, rejection, and rate limits. They are still firewalld policy, but precise enough to document who is allowed to reach what.
+- **`nft list ruleset`** - look below firewalld at the nftables rules it generated. Firewalld is the manager; nftables is the packet-filtering machinery the kernel actually evaluates.
+- **nftables chains, hooks, and priorities** - follow a packet through the base chains attached to kernel hooks and understand why rule order is more than top-to-bottom text. Priorities decide which chains see a packet first.
+- **`ss -tulpn`** - confirm which processes are listening and on which addresses before blaming the firewall. A closed service and a blocked service can look identical from another host, so verify the listener first and exposure second.
 
 ## Verify
 
@@ -68,7 +68,7 @@ Day 11 runs on **`node1`**, the same VM as Days 02 to 05. It needs no extra disk
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 768 MB, about a minute
+./lab/lab.sh up node1            # 2 GB, about a minute
 ```
 
 Days 06 to 10 needed no VM at all, so if you tore `node1` down after Day 05 it is gone along with its disk. A rebuilt `node1` is a blank Rocky image.

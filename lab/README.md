@@ -6,7 +6,7 @@
 |---|---|
 | Host OS | Linux (KVM lives in your kernel; nothing to install for the hypervisor itself) |
 | CPU | virtualization enabled in BIOS/UEFI — `vmx` for Intel, `svm` for AMD |
-| RAM | 8 GB works. 1 GB for a single VM, about 2.5 GB for all three |
+| RAM | 8 GB works. 2 GB for node1, about 3.8 GB for all three |
 | Disk | ~12 GB: a 1 GB base image plus thin overlays |
 | Packages | libvirt, virt-install, qemu system emulation for x86 |
 
@@ -98,7 +98,7 @@ qemu-img create -f qcow2 -F qcow2 \
   -b ~/.local/share/bash-mastery-linux/images/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2 \
   ~/.local/share/bash-mastery-linux/disks/node1.qcow2 10G
 
-virt-install --name node1 --memory 768 --vcpus 1 \
+virt-install --name node1 --memory 2048 --vcpus 1 \
   --disk path=~/.local/share/bash-mastery-linux/disks/node1.qcow2,format=qcow2 --import \
   --os-variant rocky9 --network network=default --noautoconsole \
   --graphics vnc,listen=127.0.0.1 \

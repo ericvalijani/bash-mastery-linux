@@ -81,15 +81,16 @@ Designed for an 8 GB laptop, measured rather than hoped.
 
 | Days | Needs | RAM |
 |---|---|---|
-| 01–05, 11–13, 17, 19 | one VM | ~1 GB |
+| 01 | one VM (`control`) | ~1 GB |
+| 02–05, 11–13, 17, 19 | one VM (`node1`) | ~2 GB |
 | **06–10, 18** | **no VM at all** | **0 MB** |
-| 14, 16, 20 | two VMs | ~1.8 GB |
-| 15 | three VMs | ~2.5 GB |
+| 14, 16, 20 | two VMs | ~3 GB |
+| 15 | three VMs | ~3.8 GB |
 
 | VM | RAM | Role |
 |---|---|---|
 | `control` | 1024 MB | Where you sit. Ansible runs from here |
-| `node1` | 768 MB | The machine you configure and break |
+| `node1` | 2048 MB | The machine you configure and break |
 | `node2` | 768 MB | Starts clean. Only Day 15 needs it |
 
 Disks are thin qcow2 overlays on one shared base image, so three VMs cost barely more than one until you install packages. Budget about 12 GB of disk. Peak memory happens on Day 15 only.
@@ -206,7 +207,7 @@ days/dayNN/scripts/          your work goes here
 
 So run `./lab/lab.sh check` first. It is the most tested part, and it will tell you what is missing before anything tries to create a VM. If `virt-install` rejects `--os-variant rocky9`, your `osinfo-db` predates Rocky 9 — use `rhel9.0`; the script already tries to fall back, and `lab/README.md` has the manual commands.
 
-Days 01 through 11 ship five worked scripts each. The other 9 `days/dayNN/scripts/` directories are empty on purpose - they are written one day at a time, each run on the real lab before the next is started.
+Days 01 through 12 ship five worked scripts each. The other 8 `days/dayNN/scripts/` directories are empty on purpose - they are written one day at a time, each run on the real lab before the next is started.
 
 ---
 

@@ -11,7 +11,7 @@
 #   lab-cap hog-mem          allocate 10 MB a second until something stops it
 #   lab-cap hog-cpu          spin flat out until something stops it
 #
-# Run by hand it will happily take the machine down with it - a 768 MB VM has
+# Run by hand it will happily take the machine down with it - a 2 GB VM has
 # no swap, so nothing here is polite. Run inside the cgroup that setup.sh
 # builds, it cannot: MemoryMax kills it at 100 MB and CPUQuota holds it to a
 # fifth of one core. Same program, two very different neighbours.

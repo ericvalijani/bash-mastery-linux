@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | The host |
 | **Runs on** | VM: node1 |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -75,7 +75,7 @@ Day 05 runs on **`node1`**, the same VM as Days 02, 03 and 04. It needs no extra
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 768 MB, about a minute
+./lab/lab.sh up node1            # 2 GB, about a minute
 ```
 
 If you tore the VM down since Day 04, remember what `down` takes with it: the whole machine, its disk, and any disk added with `add-disk`. A rebuilt `node1` is a blank Rocky image with none of the packages from previous days.

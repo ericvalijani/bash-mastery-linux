@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | The host |
 | **Runs on** | VM: node1 + extra disk |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + CI |
 
 ## Why this day exists
@@ -74,7 +74,7 @@ Day 04 runs on **`node1`**, the same VM as Days 02 and 03, and it needs somethin
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 768 MB, about a minute
+./lab/lab.sh up node1            # 2 GB, about a minute
 ./lab/lab.sh add-disk node1 2    # a blank 2 GB disk, appears as /dev/vdb
 ```
 

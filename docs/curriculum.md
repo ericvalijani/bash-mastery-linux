@@ -7,25 +7,25 @@ Twenty days, four phases of five. Each phase ends somewhere you could stop and s
 | Day | Title | Runs on | Memory | Verified by |
 |---|---|---|---|---|
 | 01 | [systemd and the boot path](../days/day01/README.md) | VM: control | ~1 GB | lint + your lab |
-| 02 | [Users, sudo, permissions and ACLs](../days/day02/README.md) | VM: node1 | ~1 GB | lint + your lab |
-| 03 | [Processes, signals, cgroups v2 and limits](../days/day03/README.md) | VM: node1 | ~1 GB | lint + your lab |
-| 04 | [Storage: LVM, filesystems and mount units](../days/day04/README.md) | VM: node1 + extra disk | ~1 GB | lint + CI |
-| 05 | [Logs and time: journald, logrotate and chrony](../days/day05/README.md) | VM: node1 | ~1 GB | lint + your lab |
+| 02 | [Users, sudo, permissions and ACLs](../days/day02/README.md) | VM: node1 | ~2 GB | lint + your lab |
+| 03 | [Processes, signals, cgroups v2 and limits](../days/day03/README.md) | VM: node1 | ~2 GB | lint + your lab |
+| 04 | [Storage: LVM, filesystems and mount units](../days/day04/README.md) | VM: node1 + extra disk | ~2 GB | lint + CI |
+| 05 | [Logs and time: journald, logrotate and chrony](../days/day05/README.md) | VM: node1 | ~2 GB | lint + your lab |
 | 06 | [Interfaces, routing and building the namespace lab](../days/day06/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 07 | [The DNS resolution path](../days/day07/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 08 | [Running DNS: authoritative and recursive](../days/day08/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 09 | [Packet-level debugging](../days/day09/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 10 | [TLS on the wire and a private CA](../days/day10/README.md) | Host: network namespaces | 0 MB | lint + CI |
-| 11 | [firewalld, and the nftables underneath it](../days/day11/README.md) | VM: node1 | ~1 GB | lint + your lab |
-| 12 | [SSH hardening, bastions and fail2ban](../days/day12/README.md) | VM: control + node1 | ~1.8 GB | lint + your lab |
-| 13 | [SELinux: contexts, booleans and denial triage](../days/day13/README.md) | VM: node1 | ~1 GB | lint + your lab |
-| 14 | [Ansible fundamentals](../days/day14/README.md) | control -> node1 | ~1.8 GB | lint + your lab |
-| 15 | [Ansible roles: your hardening baseline](../days/day15/README.md) | control -> node1 + node2 | ~2.5 GB | lint + your lab |
-| 16 | [WireGuard: a private network between hosts](../days/day16/README.md) | VM: control + node1 | ~1.8 GB | lint + your lab |
-| 17 | [Reverse proxy and TLS termination](../days/day17/README.md) | VM: node1 | ~1 GB | lint + your lab |
+| 11 | [firewalld, and the nftables underneath it](../days/day11/README.md) | VM: node1 | ~2 GB | lint + your lab |
+| 12 | [SSH hardening, bastions and fail2ban](../days/day12/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
+| 13 | [SELinux: contexts, booleans and denial triage](../days/day13/README.md) | VM: node1 | ~2 GB | lint + your lab |
+| 14 | [Ansible fundamentals](../days/day14/README.md) | control -> node1 | ~3 GB | lint + your lab |
+| 15 | [Ansible roles: your hardening baseline](../days/day15/README.md) | control -> node1 + node2 | ~3.8 GB | lint + your lab |
+| 16 | [WireGuard: a private network between hosts](../days/day16/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
+| 17 | [Reverse proxy and TLS termination](../days/day17/README.md) | VM: node1 | ~2 GB | lint + your lab |
 | 18 | [Bridges, VLANs and link aggregation](../days/day18/README.md) | Host: network namespaces | 0 MB | lint + CI |
-| 19 | [Intrusion detection and audit alerting](../days/day19/README.md) | VM: node1 | ~1 GB | lint + your lab |
-| 20 | [Backup, restore and the restore drill](../days/day20/README.md) | VM: control + node1 | ~1.8 GB | lint + your lab |
+| 19 | [Intrusion detection and audit alerting](../days/day19/README.md) | VM: node1 | ~2 GB | lint + your lab |
+| 20 | [Backup, restore and the restore drill](../days/day20/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
 
 ## Phase 1 — The host (Days 01–05)
 

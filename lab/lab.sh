@@ -26,7 +26,7 @@
 #
 # Memory budget on an 8 GB machine:
 #   control  1024 MB
-#   node1     768 MB
+#   node1     2048 MB
 #   node2     768 MB   (only needed on Day 15)
 
 set -euo pipefail
@@ -91,7 +91,8 @@ die()  { bad "$*"; exit 1; }
 vm_mem() {
   case "$1" in
     control) echo 1024 ;;
-    node1|node2) echo 768 ;;
+    node1) echo 2048 ;;
+    node2) echo 768 ;;
     *) echo 768 ;;
   esac
 }
@@ -391,13 +392,13 @@ cmd_check() {
   local avail
   avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo)
   printf '         %s MB available now\n' "$avail"
-  if (( avail >= 2600 )); then
-    ok "enough for control + node1 (1792 MB)"
-  elif (( avail >= 1900 )); then
+  if (( avail >= 3800 )); then
+    ok "enough for control + node1 (3072 MB)"
+  elif (( avail >= 3200 )); then
     warn "tight — run one VM at a time, or close your browser during labs"
     warns=$((warns + 1))
   else
-    warn "under 1.9 GB available — close applications before 'lab.sh up'"
+    warn "under 3.2 GB available — close applications before 'lab.sh up'"
     warns=$((warns + 1))
   fi
 

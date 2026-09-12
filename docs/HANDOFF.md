@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 11 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 12 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -164,7 +164,7 @@ Nothing is written inside the repository.
 | VM | RAM | Role |
 |---|---|---|
 | `control` | 1024 MB | Where the learner sits. Ansible runs from here |
-| `node1` | 768 MB | The machine that gets configured and broken |
+| `node1` | 2048 MB | The machine that gets configured and broken |
 | `node2` | 768 MB | Starts clean. Only Day 15 needs it |
 
 Disks are thin qcow2 overlays on one shared base image
@@ -246,10 +246,11 @@ not be broken when editing:
 
 | Days | Needs | RAM |
 |---|---|---|
-| 01–05, 11–13, 17, 19 | one VM | ~1 GB |
+| 01 | one VM (`control`) | ~1 GB |
+| 02–05, 11–13, 17, 19 | one VM (`node1`) | ~2 GB |
 | **06–10, 18** | **no VM at all** | **0 MB** |
-| 14, 16, 20 | two VMs | ~1.8 GB |
-| 15 | three VMs | ~2.5 GB |
+| 14, 16, 20 | two VMs | ~3 GB |
+| 15 | three VMs | ~3.8 GB |
 
 Peak is Day 15 only. Designed against an 8 GB laptop.
 
@@ -394,8 +395,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **262 passed, 0 failed** (was 247; Day 11's five scripts added checks) |
-| `bash -n` on all 80 shell scripts | 0 failures |
+| `tests/cli.sh` | **277 passed, 0 failed** (was 262; Day 12's five scripts added checks) |
+| `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -925,6 +926,43 @@ Packages the VM needs, per the Day 04 lesson: `sudo dnf install -y chrony
 logrotate`. `setup.sh` checks for `chronyc logrotate logger journalctl
 timedatectl` before changing anything.
 
+### Day 12 was written (2026-09-11)
+
+`days/day12/` now ships five scripts, a 233-line README and a five-check
+verify. The day is SSH hardening: keys only, `AllowGroups labssh`, a
+fail2ban jail with a two-minute ban, and ProxyJump.
+
+Decisions worth knowing:
+
+- **One VM, not two.** The curriculum lists this day as `control + node1`
+  because a bastion needs two hosts. All five automatic checks run on
+  `node1` alone, and the README gives a single-host ProxyJump exercise
+  (`ssh -J lab@node1 lab@127.0.0.1`) for anyone without the 3 GB.
+- **setup.sh refuses to run if the login user has no `authorized_keys`.**
+  Disabling passwords on an account with no key is the way people lose a
+  cloud VM, and a teaching script must not be able to do it.
+- **Nothing in this day ever restarts sshd.** Every change is validated
+  with `sshd -t` and loaded with `systemctl reload sshd`, which keeps the
+  current session alive even when the new policy would refuse it.
+- **fail2ban comes from EPEL** on Rocky 9, so setup fails with the two
+  `dnf` lines rather than a bare "command not found".
+- **`vl_need_root` and absolute `/usr/sbin/sshd`** in verify.sh: `sshd -T`
+  reads host keys and `/usr/sbin` is not on a normal PATH. Same root-
+  required lesson as Day 11.
+- The payload is `/usr/local/bin/lab-ssh`, and every reference to it in
+  the README and the scripts uses the **full path**, because `sudo` on
+  Rocky uses a `secure_path` that excludes `/usr/local/bin`.
+
+The five failures in `break-and-fix.sh`: a drop-in that never wins
+(60 sorts before 70, first value wins), an allow list that excludes you,
+self-ban, a `Match` block where `sshd -T` is green and `sshd -T -C` is
+not, and the unsurvivable one, described and not executed.
+
+Day 12 was exercised end to end in the authoring sandbox against mock
+`sshd`, `fail2ban-client` and `systemctl`, and not on hardware. The mock
+`sshd` implements first-value-wins and `Match` evaluation, which is how
+failures 1 and 4 were confirmed to actually behave as the text claims.
+
 ### Day 11 was written (2026-09-10)
 
 Day 11 is a VM day - `node1`, Rocky 9 - and the first VM day since Day 05,
@@ -1267,7 +1305,7 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 11 are done (5 scripts each).
+2. **Write the day scripts.** Days 01 through 12 are done (5 scripts each).
    Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with

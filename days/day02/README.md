@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | The host |
 | **Runs on** | VM: node1 |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -73,7 +73,7 @@ From the top of the repository:
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 768 MB, about a minute
+./lab/lab.sh up node1            # 2 GB, about a minute
 ./lab/lab.sh status              # wait until node1 has an IP address
 ```
 

@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | The host |
 | **Runs on** | VM: node1 |
-| **Memory** | ~1 GB (one VM) |
+| **Memory** | ~2 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -70,7 +70,7 @@ Day 03 runs on **`node1`**, the same VM as Day 02. Nothing today conflicts with 
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 768 MB, about a minute
+./lab/lab.sh up node1            # 2 GB, about a minute
 ```
 
 If `node1` is already up from yesterday, `status` will say so and `up` is a no-op.
