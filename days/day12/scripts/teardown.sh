@@ -15,7 +15,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../lab/on-lab-vm.sh"
 require_lab_vm
 
 SSHD="/usr/sbin/sshd"
-DROPIN="/etc/ssh/sshd_config.d/60-lab-hardening.conf"
+DROPIN="/etc/ssh/sshd_config.d/00-lab-hardening.conf"
+LEGACY_DROPIN="/etc/ssh/sshd_config.d/60-lab-hardening.conf"
 EXTRA="/etc/ssh/sshd_config.d/70-lab-broken.conf"
 JAIL="/etc/fail2ban/jail.d/lab-sshd.local"
 GROUP="labssh"
@@ -41,7 +42,7 @@ else
 fi
 
 say "2. removing the hardening drop-ins"
-rm -f "$DROPIN" "$EXTRA"
+rm -f "$DROPIN" "$LEGACY_DROPIN" "$EXTRA"
 
 if "$SSHD" -t 2>/dev/null; then
 	ok "sshd -t passes without them"

@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Hardening and configuration management |
 | **Runs on** | VM: node1 |
-| **Memory** | ~2 GB (one VM) |
+| **Memory** | ~1 GB (one VM) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -19,12 +19,12 @@ So the work is really about a habit: read the effective policy rather than the f
 
 ## What you will work with
 
-- **`sshd -T`** - print the effective server configuration after includes, defaults, and precedence have been resolved. Reading this output is safer than trusting a file that may not be the value sshd actually uses; `sshd -T -C user=...` goes further and evaluates policy for one named connection.
-- **`/etc/ssh/sshd_config.d/`** - keep lab hardening in a focused drop-in instead of rewriting the distribution file. On Rocky 9 the include appears near the top, and sshd keeps the first value it reads for most keywords, so precedence is deliberately part of the exercise.
-- **`PasswordAuthentication` and `PermitRootLogin`** - separate password access from root access rather than treating “SSH is hardened” as one switch. `prohibit-password` still permits root keys, while `no` forbids root completely; you should be able to explain which policy you chose.
-- **`AllowUsers` and `AllowGroups`** - add an explicit admission list on top of valid credentials. The lab uses a group so future access changes happen with group membership rather than another risky sshd configuration edit.
-- **`ProxyJump` and `~/.ssh/config`** - reach a destination through a bastion and then encode both hops as reusable client configuration. `ssh -G HOST` shows the client's effective choices just as `sshd -T` shows the server's.
-- **`fail2ban-client status sshd`** - verify that fail2ban is reading SSH failures and maintaining the jail that can add firewall bans. You will deliberately ban and unban an address so a refusal caused by fail2ban is distinguishable from a broken sshd configuration.
+- `sshd -T to read the effective config`
+- `/etc/ssh/sshd_config.d/`
+- `PasswordAuthentication, PermitRootLogin`
+- `AllowUsers, AllowGroups`
+- `ProxyJump and ~/.ssh/config`
+- `fail2ban-client status sshd`
 
 ## Verify
 
@@ -69,10 +69,10 @@ Day 12 runs on **`node1`**. Day 11 left it running; if you took it down, a rebui
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up node1            # 2 GB, about a minute
+./lab/lab.sh up node1            # 768 MB, about a minute
 ```
 
-The curriculum lists this day as `control + node1`, because a bastion needs two hosts. Two VMs use about 3 GB. **You do not need the second VM for the automatic checks** - all five run on `node1` alone - and section 3 below gives you a one-host version of the ProxyJump exercise. Bring up `control` as well only if you have the memory to spare.
+The curriculum lists this day as `control + node1`, because a bastion needs two hosts. Two VMs is about 1.8 GB. **You do not need the second VM for the automatic checks** - all five run on `node1` alone - and section 3 below gives you a one-host version of the ProxyJump exercise. Bring up `control` as well only if you have the memory to spare.
 
 ### 2. Copy the repo onto the VM
 
@@ -107,7 +107,7 @@ sudo grep -nE '^\s*Include' /etc/ssh/sshd_config
 ls -1 /etc/ssh/sshd_config.d/
 ```
 
-That `Include` line is at the **top** of the file on Rocky 9, and sshd keeps the **first** value it reads for most keywords. So a drop-in beats the main file - the opposite of how Apache or nginx behave, and the subject of failure 1.
+That `Include` line is at the **top** of the file on Rocky 9, and sshd keeps the **first** value it reads for most keywords. So a drop-in beats the main file - the opposite of how Apache or nginx behave. Drop-ins also use lexical order, which is why the lab policy is named `00-lab-hardening.conf`: it must be read before Rocky and cloud-init’s `50-*` files. The later-file trap is the subject of failure 1.
 
 Open a second terminal to your laptop now and leave it connected to `node1`. Everything below is safe, but the habit is the point: never make the only session you have the one you are experimenting on.
 

@@ -33,9 +33,9 @@ note "Most people assume the opposite, the way Apache or nginx behave."
 
 say "3. the drop-ins, in the order sshd reads them"
 run_sh "ls -1 /etc/ssh/sshd_config.d/"
-note "Glob order is lexical, which is why these files are numbered. 50- is"
-note "the vendor's, 60- is ours. Ours is read second and therefore loses"
-note "any keyword the vendor file already set - check before you assume."
+note "Glob order is lexical, which is why these files are numbered. Rocky and"
+note "cloud-init use 50- files; our 00- file is read first and therefore wins"
+note "for first-value keywords such as PasswordAuthentication."
 
 say "4. what is actually loaded"
 run_sh "$SSHD -T | sort | head -25"

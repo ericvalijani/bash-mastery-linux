@@ -3,7 +3,7 @@
 # Day 12 setup - harden sshd, and put fail2ban in front of it.
 #
 # Leaves behind:
-#   /etc/ssh/sshd_config.d/60-lab-hardening.conf   the policy you will read
+#   /etc/ssh/sshd_config.d/00-lab-hardening.conf   the policy you will read
 #   group 'labssh' containing your login user       the allow list
 #   /etc/fail2ban/jail.d/lab-sshd.local             a jail with a short ban
 #   /usr/local/bin/lab-ssh                          the payload
@@ -33,7 +33,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PAYLOAD_SRC="$HERE/lab-ssh.sh"
 PAYLOAD="/usr/local/bin/lab-ssh"
 
-DROPIN="/etc/ssh/sshd_config.d/60-lab-hardening.conf"
+DROPIN="/etc/ssh/sshd_config.d/00-lab-hardening.conf"
+LEGACY_DROPIN="/etc/ssh/sshd_config.d/60-lab-hardening.conf"
 JAIL="/etc/fail2ban/jail.d/lab-sshd.local"
 GROUP="labssh"
 SSHD="/usr/sbin/sshd"
@@ -113,8 +114,9 @@ note "the allow list is built BEFORE it is enforced, never after"
 # ---------------------------------------------------------------------------
 # /etc/ssh/sshd_config on Rocky 9 starts with:  Include /etc/ssh/sshd_config.d/*.conf
 # and sshd takes the FIRST value it sees for most keywords. Because the
-# Include is at the top, a drop-in beats the main file - which is the opposite
-# of what most people assume, and the subject of failure 1.
+# Include is at the top, a drop-in beats the main file. Drop-ins are also
+# read lexically and first value wins, so ours must be 00- to precede Rocky's
+# 50-redhat.conf and cloud-init's 50-cloud-init.conf.
 say "3. the hardening drop-in"
 
 mkdir -p /etc/ssh/sshd_config.d
@@ -135,7 +137,8 @@ MaxAuthTries 3
 LoginGraceTime 20
 EOF
 chmod 600 "$DROPIN"
-ok "wrote $DROPIN"
+rm -f "$LEGACY_DROPIN"
+ok "wrote $DROPIN (and removed the legacy 60- filename if present)"
 
 # ---------------------------------------------------------------------------
 # 4. validate, THEN load

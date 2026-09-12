@@ -17,7 +17,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../lab/on-lab-vm.sh"
 require_lab_vm
 
 SSHD="/usr/sbin/sshd"
-DROPIN="/etc/ssh/sshd_config.d/60-lab-hardening.conf"
+DROPIN="/etc/ssh/sshd_config.d/00-lab-hardening.conf"
 EXTRA="/etc/ssh/sshd_config.d/70-lab-broken.conf"
 BACKUP="/root/.day12-dropin.bak"
 GROUP="labssh"
@@ -80,7 +80,7 @@ trap restore EXIT INT TERM
 # ---------------------------------------------------------------------------
 say "1. the drop-in that loses"
 
-# 70- sorts after 60-, so it is read second. For most keywords sshd keeps the
+# 70- sorts after 00-, so it is read second. For most keywords sshd keeps the
 # first value, so this file is ignored - the exact opposite of what the
 # person who wrote it intended.
 cat > "$EXTRA" <<'EOF'
@@ -95,7 +95,7 @@ run_sh "$SSHD -T | grep -E '^(passwordauthentication|maxauthtries) '"
 
 note "Two files, two answers, and the effective config follows NEITHER by"
 note "filename intuition. sshd kept the first value it read, which came"
-note "from 60-, because 60 sorts before 70."
+note "from 00-, because 00 sorts before 70."
 note ""
 note "The engineer who added 70- will swear the change is live. grep proves"
 note "the file exists. Only sshd -T proves what is loaded."
@@ -229,7 +229,7 @@ cat <<'EOF'
 
 Five failures.
 
-  drop-in order      first value wins, and 60 sorts before 70
+  drop-in order      first value wins, and 00 sorts before 70
   allow list         valid config, healthy service, and you are locked out
   self-ban           the block lives in the firewall, not in sshd
   Match block        sshd -T is green, sshd -T -C is not
