@@ -5,9 +5,9 @@
 
 **Last updated:** 2026-09-13
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–16 scripts written**;
-Days 12, 13, 14 and 15 verified on real Rocky 9 lab VMs
-**Executed against real KVM hardware through Day 15.** See §8.
+**Status:** scaffold complete, 20 days written, **Days 01–17 scripts written**;
+Days 12, 13, 14, 15 and 16 verified on real Rocky 9 lab VMs
+**Executed against real KVM hardware through Day 16.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
 ---
@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 16 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 17 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -237,7 +237,9 @@ not be broken when editing:
 
 - **06 → 07, 08, 09, 18.** Day 06 builds the namespace topology the rest use.
 - **10 → 17.** Day 17 serves TLS using the private CA issued on Day 10.
-- **08 → 17.** Day 17 expects `www.lab.test` to resolve from Day 08's zone.
+- **08 → 17.** Day 17 needs `www.lab.test` to resolve. Day 08's zone serves it
+  properly; `setup.sh` writes `127.0.0.1 www.lab.test` to `/etc/hosts` so the
+  day works without it, and says so in the README.
 - **11, 12, 13 → 15.** Day 15 turns that manual hardening into an Ansible role.
 - **04 → 20.** Day 20 backs up and restores `/srv/data` from Day 04.
 - **14 → 15.** Roles build on the playbook basics.
@@ -395,7 +397,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **337 passed, 0 failed** (was 322; Day 16's five scripts added checks) |
+| `tests/cli.sh` | **352 passed, 0 failed** (was 337; Day 17's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -1116,6 +1118,63 @@ On an 8 GB laptop Day 15's 5.5 GB is tight. Both `README.md` and the Day 15
 README now say to close the browser, or to start `node1` after the role has
 been applied to `node2` - which is what `--limit` is for.
 
+### Day 17 was written (2026-09-13)
+
+`days/day17/` now ships five scripts, a full README and a 19-check verify. The
+day is a reverse proxy: nginx on `node1` terminating TLS for `www.lab.test` in
+front of a plain-HTTP backend on `127.0.0.1:8080`.
+
+Decisions worth knowing:
+
+- **The CA is reused if present, issued if not.** `setup.sh` looks for
+  `/etc/lab-tls/{ca.crt,ca.key}` from Day 10 and creates one with Day 10's
+  openssl commands otherwise, so the day is self-contained on a fresh VM. Same
+  precedent as Day 16: a day may lean on another day's lesson, not on its
+  leftovers.
+- **This is the first thing in the repo that installs a trust anchor.** Day 10
+  deliberately stopped short. Day 17 copies the CA to
+  `/etc/pki/ca-trust/source/anchors/lab-ca.crt` and runs `update-ca-trust`,
+  which is what makes plain `curl https://www.lab.test/` succeed. The README
+  says out loud that Firefox, Java and node keep their own stores.
+- **The certificates live under `/etc/pki/tls`,** not next to the CA, because
+  that tree is already labelled `cert_t`. `setup.sh` still runs `restorecon`
+  on both files.
+- **The backend is `python3 -m http.server --bind 127.0.0.1`** under
+  `lab-app.service` with `DynamicUser=yes`. Started by systemd it runs
+  unconfined, so no port labelling is needed - the SELinux lesson here is the
+  boolean, not `semanage port`.
+- **`setsebool -P httpd_can_network_connect on`.** nginx is `httpd_t` and may
+  not open the upstream socket without it. This is the Day 13 callback the
+  curriculum promised, and break-and-fix turns it off to show the 502.
+- **firewalld uses the same daemon-vs-offline split as Day 16,** and 8080 is
+  deliberately left closed - `verify.sh` asserts it is closed.
+- **`setup.sh` installs firewalld and starts it.** First hardware run had no
+  firewalld on `node1` at all (Day 11 installs it; the VM had been rebuilt
+  since), so `open_port` took the "no firewalld here" branch, said nothing was
+  wrong, and `verify.sh` then failed the port check. firewalld is now in the
+  package list and the daemon is started and enabled before any port is added.
+  The general rule is now two-part: **a day may not assume another day's
+  daemon is running, nor that its packages are still installed.**
+- **Days 14-16 are not prerequisites.** Day 10, Day 11 and Day 13 are the ones
+  it builds on.
+- **HTTP/2 is version-dependent and `setup.sh` now detects it.** First
+  hardware run failed at step 7 with `unknown directive "http2"`: `http2 on;`
+  is nginx >= 1.25.1 and Rocky 9 ships 1.20, which wants
+  `listen 443 ssl http2;`. The script parses `nginx -v` and writes whichever
+  form applies, printing which one it chose. Same class of mistake as
+  assuming another day's daemon is running: **do not assume a version, ask
+  the binary.**
+
+`break-and-fix.sh` runs four failures: the boolean off (502 plus `Permission
+denied`), a certificate for `other.lab.test` (`openssl verify` passes, clients
+refuse), the backend stopped (502 refused, with prose on why a dropped packet
+would give 504 instead), and a renewed certificate that nginx was never
+reloaded to read. `--hard` describes two that fail silently: the backend bound
+to `0.0.0.0`, and opening 8080 "to test something".
+
+Not yet run on hardware. `bash -n` clean, `tests/cli.sh` **352 passed, 0
+failed**, exec bits set on all six files.
+
 ### Day 16 was written (2026-09-13)
 
 `days/day16/` now ships five scripts, a rewritten README and a twelve-check
@@ -1189,8 +1248,10 @@ Decisions worth knowing:
 - **Day 14 and Day 15 are not prerequisites** and the README says so. Today
   touches nothing they built - no `ansible.cfg`, no project directory.
 
-Not yet run on hardware. `bash -n` clean, `tests/cli.sh` **337 passed, 0
-failed**, exec bits set on all six files.
+**Run on hardware (2026-09-13): `12 passed, 0 failed, 2 for you to judge` on
+both `control` and `node1`.** One check needed fixing first - see the note on
+comparing settings rather than text, above. `bash -n` clean, exec bits set on
+all six files.
 
 ### Day 13 was written (2026-09-12)
 
@@ -1637,8 +1698,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 16 are done (5 scripts each).
-   Days 17-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 through 17 are done (5 scripts each).
+   Days 18-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -1739,4 +1800,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-16 which are written; Days 12, 13, 14 and 15 run green on hardware, Day 16 is written and not yet run. `tests/cli.sh`: 337 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-17 which are written; Days 12, 13, 14, 15 and 16 run green on hardware, Day 17 is written and not yet run. `tests/cli.sh`: 352 passed, 0 failed.
