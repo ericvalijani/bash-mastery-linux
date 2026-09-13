@@ -5,7 +5,7 @@
 
 **Last updated:** 2026-09-13
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–15 scripts written**;
+**Status:** scaffold complete, 20 days written, **Days 01–16 scripts written**;
 Days 12, 13, 14 and 15 verified on real Rocky 9 lab VMs
 **Executed against real KVM hardware through Day 15.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 15 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 16 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -395,7 +395,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **322 passed, 0 failed** (was 307; Day 15's five scripts added checks) |
+| `tests/cli.sh` | **337 passed, 0 failed** (was 322; Day 16's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -1116,6 +1116,82 @@ On an 8 GB laptop Day 15's 5.5 GB is tight. Both `README.md` and the Day 15
 README now say to close the browser, or to start `node1` after the role has
 been applied to `node2` - which is what `--limit` is for.
 
+### Day 16 was written (2026-09-13)
+
+`days/day16/` now ships five scripts, a rewritten README and a twelve-check
+verify. The day is WireGuard: one tunnel between `control` and `node1`,
+`10.20.0.1` and `10.20.0.2`, `wg-quick@wg0` enabled and proven across a
+reboot.
+
+Decisions worth knowing:
+
+- **`setup.sh` runs on BOTH hosts, twice each.** Pass 1 generates the keypair
+  and writes `wg0.conf` with no peer; pass 2 takes the other host's public key
+  and lab address. This is deliberately not automated from `control`: a
+  private key that travelled to the other host is not a private key, and the
+  out-of-band exchange is the lesson. It is the first day whose README tells
+  the reader to `push` the repository to `node1` as well.
+- **The host works out which end it is** from `hostname -s` (`control` ->
+  `10.20.0.1`, `node1` -> `10.20.0.2`), with `ROLE=` as the override. No
+  address arguments, so nothing drifts when a DHCP lease changes - the lab
+  address is only ever used as the peer `Endpoint`.
+- **`umask 077` before `wg genkey`, not `chmod` afterwards.** The window
+  between a 0644 create and a 0600 chmod is small and a private key only has
+  to leak once. Stated in the script and checked in `verify.sh`.
+- **Re-runs use `wg syncconf`, not `wg-quick down && up`.** Bouncing the
+  interface drops the handshake, and on a management tunnel that is the
+  session you are typing into. `break-and-fix.sh` makes the same point as its
+  fourth failure.
+- **No kernel module to build.** WireGuard is mainline since 5.6, so Rocky 9
+  needs only `wireguard-tools`. `setup.sh` still checks `/sys/module/wireguard`
+  and `modprobe`, because the failure mode on a stripped kernel is otherwise a
+  confusing `wg-quick` error.
+- **`AllowedIPs` is the day.** Taught as a route outbound and a source-address
+  ACL inbound, which is why the two ends are coupled and why narrowing one
+  side makes the *healthy* end look broken. `lab-wg routes` prints the
+  configured value, the routes it became, and `ip route get` next to each
+  other.
+- **`break-and-fix.sh` covers four failures, none of which produce an error
+  message**: a valid-looking peer key belonging to nobody (no handshake,
+  nothing in `journalctl -k`), `AllowedIPs` narrowed to an address the peer
+  does not have, `MTU = 1500` where 1420 belongs (ping passes, `-M do -s 1400`
+  hangs), and a file edited after `wg-quick up` read it. `--hard` *describes*
+  two lock-outs rather than causing them: `AllowedIPs = 0.0.0.0/0` stealing
+  the default route out from under the SSH session, and `wg-quick down` on the
+  far end over the tunnel itself.
+- **`verify.sh` has twelve automatic checks**, more than any earlier day,
+  because every piece of this day is a separate claim: module loaded,
+  interface addressed, `wg0.conf` and `wg0.key` at 0600, a peer that is not
+  this host's own key, a handshake that actually completed, a ping inside the
+  tunnel, `AllowedIPs` having become a route, a full-size packet surviving
+  (the MTU check), file and kernel agreeing, the port permanent in firewalld,
+  and the unit enabled. Two judgement calls: explaining `AllowedIPs` in each
+  direction, and having rebooted and watched the tunnel return.
+- **`wg-quick strip` versus `wg showconf` formatting.** The first hardware run
+  failed one check, `the file and the kernel agree`, on a correctly working
+  tunnel: the raw diff compared formatting, and `strip` preserves the file's
+  own key order and column spacing while `showconf` prints the kernel's
+  normalized form. Both `verify.sh` and `break-and-fix.sh` now collapse
+  whitespace, keep only `PublicKey|PresharedKey|AllowedIPs|Endpoint|
+  PersistentKeepalive`, and `sort` both sides. Emulated locally in
+  `/tmp`-style harness: agreeing config passes, `PersistentKeepalive = 99` in
+  the file still fails. General rule: **compare settings, not text.**
+- **`firewall-cmd --permanent` versus `firewall-offline-cmd`.** The first
+  hardware run of Day 16 died at step 4 on both hosts with `FirewallD is not
+  running`: `--permanent` talks to the daemon and does not fall back to
+  editing the XML when it is stopped, and a freshly built lab VM has
+  `firewalld` installed and stopped (Day 11 starts it, and only on `node1`).
+  `setup.sh` now branches on `systemctl is-active firewalld`, uses
+  `firewall-offline-cmd` when it is down, then starts and enables the daemon
+  so the policy is actually loaded. `teardown.sh` has the same split and
+  `verify.sh` accepts either query. General rule: **a day may not assume
+  another day's daemon is running.**
+- **Day 14 and Day 15 are not prerequisites** and the README says so. Today
+  touches nothing they built - no `ansible.cfg`, no project directory.
+
+Not yet run on hardware. `bash -n` clean, `tests/cli.sh` **337 passed, 0
+failed**, exec bits set on all six files.
+
 ### Day 13 was written (2026-09-12)
 
 `days/day13/` now ships five scripts plus a policy source file, a rewritten
@@ -1561,8 +1637,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 15 are done (5 scripts each).
-   Days 16-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 through 16 are done (5 scripts each).
+   Days 17-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -1663,4 +1739,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-15 which are written and all run green on hardware (Days 12, 13, 14 and 15). `tests/cli.sh`: 322 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-16 which are written; Days 12, 13, 14 and 15 run green on hardware, Day 16 is written and not yet run. `tests/cli.sh`: 337 passed, 0 failed.

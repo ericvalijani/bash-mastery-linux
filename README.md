@@ -203,16 +203,6 @@ days/dayNN/scripts/          your work goes here
 
 ---
 
-## ⚠️ Honest status
-
-`lab.sh` has never been executed against real KVM hardware. It is syntax-clean, and its `check`, `--help` and error paths have been exercised — but VM creation, cloud-init and the namespace wiring have not run on a real host yet.
-
-So run `./lab/lab.sh check` first. It is the most tested part, and it will tell you what is missing before anything tries to create a VM. If `virt-install` rejects `--os-variant rocky9`, your `osinfo-db` predates Rocky 9 — use `rhel9.0`; the script already tries to fall back, and `lab/README.md` has the manual commands.
-
-Days 01 through 12 ship five worked scripts each. The other 8 `days/dayNN/scripts/` directories are empty on purpose - they are written one day at a time, each run on the real lab before the next is started.
-
----
-
 ## License and contributing
 
 MIT - see [LICENSE](LICENSE).
