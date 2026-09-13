@@ -17,15 +17,15 @@ Twenty days, four phases of five. Each phase ends somewhere you could stop and s
 | 09 | [Packet-level debugging](../days/day09/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 10 | [TLS on the wire and a private CA](../days/day10/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 11 | [firewalld, and the nftables underneath it](../days/day11/README.md) | VM: node1 | ~2 GB | lint + your lab |
-| 12 | [SSH hardening, bastions and fail2ban](../days/day12/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
+| 12 | [SSH hardening, bastions and fail2ban](../days/day12/README.md) | VM: control + node1 | ~3.5 GB | lint + your lab |
 | 13 | [SELinux: contexts, booleans and denial triage](../days/day13/README.md) | VM: node1 | ~2 GB | lint + your lab |
-| 14 | [Ansible fundamentals](../days/day14/README.md) | control -> node1 | ~3 GB | lint + your lab |
-| 15 | [Ansible roles: your hardening baseline](../days/day15/README.md) | control -> node1 + node2 | ~3.8 GB | lint + your lab |
-| 16 | [WireGuard: a private network between hosts](../days/day16/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
+| 14 | [Ansible fundamentals](../days/day14/README.md) | control -> node1 | ~3.5 GB | lint + your lab |
+| 15 | [Ansible roles: your hardening baseline](../days/day15/README.md) | control -> node1 + node2 | ~5.5 GB | lint + your lab |
+| 16 | [WireGuard: a private network between hosts](../days/day16/README.md) | VM: control + node1 | ~3.5 GB | lint + your lab |
 | 17 | [Reverse proxy and TLS termination](../days/day17/README.md) | VM: node1 | ~2 GB | lint + your lab |
 | 18 | [Bridges, VLANs and link aggregation](../days/day18/README.md) | Host: network namespaces | 0 MB | lint + CI |
 | 19 | [Intrusion detection and audit alerting](../days/day19/README.md) | VM: node1 | ~2 GB | lint + your lab |
-| 20 | [Backup, restore and the restore drill](../days/day20/README.md) | VM: control + node1 | ~3 GB | lint + your lab |
+| 20 | [Backup, restore and the restore drill](../days/day20/README.md) | VM: control + node1 | ~3.5 GB | lint + your lab |
 
 ## Phase 1 — The host (Days 01–05)
 

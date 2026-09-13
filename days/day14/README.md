@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Hardening and configuration management |
 | **Runs on** | control -> node1 |
-| **Memory** | ~3 GB (two VMs) |
+| **Memory** | ~3.5 GB (two VMs) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists
@@ -72,13 +72,13 @@ Read them before you run them. They are commented as teaching material rather th
 
 ## Run it on the lab
 
-This is the first day since Day 05 that genuinely needs two VMs: `control` runs Ansible, `node1` is managed. Together they are about 3 GB.
+This is the first day since Day 05 that genuinely needs two VMs: `control` runs Ansible, `node1` is managed. Together they are about 3.5 GB.
 
 ### 1. On your laptop, bring up both VMs
 
 ```bash
 ./lab/lab.sh status              # what is already running?
-./lab/lab.sh up control node1    # ~3 GB total, a minute or two
+./lab/lab.sh up control node1    # ~3.5 GB total, a minute or two
 ```
 
 `node1` can be the same one Days 11-13 used; nothing here conflicts with it. A rebuilt `node1` is also fine - this day installs everything it needs.
@@ -167,7 +167,7 @@ Keep `~/ansible-lab` - Day 15 turns `site.yml` into a role. Pass `--all` only if
 
 ```bash
 exit
-./lab/lab.sh down control node1  # frees ~3 GB; takes both disks with it
+./lab/lab.sh down control node1  # frees ~3.5 GB; takes both disks with it
 ```
 
 ## Notes

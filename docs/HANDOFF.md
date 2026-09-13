@@ -3,11 +3,11 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-13
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–14 scripts written**;
-Days 12 and 13 verified on a real Rocky 9 lab VM, Day 14 written and linted
-**Executed against real KVM hardware through Day 12.** See §8.
+**Status:** scaffold complete, 20 days written, **Days 01–15 scripts written**;
+Days 12, 13, 14 and 15 verified on real Rocky 9 lab VMs
+**Executed against real KVM hardware through Day 15.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
 ---
@@ -81,7 +81,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 14 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 15 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -163,9 +163,9 @@ Nothing is written inside the repository.
 
 | VM | RAM | Role |
 |---|---|---|
-| `control` | 1024 MB | Where the learner sits. Ansible runs from here |
+| `control` | 1536 MB | Where the learner sits. Ansible runs from here |
 | `node1` | 2048 MB | The machine that gets configured and broken |
-| `node2` | 768 MB | Starts clean. Only Day 15 needs it |
+| `node2` | 2048 MB | Starts clean. Only Day 15 needs it |
 
 Disks are thin qcow2 overlays on one shared base image
 (`qemu-img create -f qcow2 -F qcow2 -b <base>`), so three VMs cost barely more
@@ -249,8 +249,8 @@ not be broken when editing:
 | 01 | one VM (`control`) | ~1 GB |
 | 02–05, 11–13, 17, 19 | one VM (`node1`) | ~2 GB |
 | **06–10, 18** | **no VM at all** | **0 MB** |
-| 14, 16, 20 | two VMs | ~3 GB |
-| 15 | three VMs | ~3.8 GB |
+| 14, 16, 20 | two VMs | ~3.5 GB |
+| 15 | three VMs | ~5.5 GB |
 
 Peak is Day 15 only. Designed against an 8 GB laptop.
 
@@ -395,7 +395,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **307 passed, 0 failed** (was 292; Day 14's five scripts added checks) |
+| `tests/cli.sh` | **322 passed, 0 failed** (was 307; Day 15's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -963,7 +963,7 @@ Decisions worth knowing:
 - **`teardown.sh` is itself a playbook** with every state inverted, and it
   deliberately leaves `rsyslog` installed and running because the
   distribution shipped it. It keeps `~/ansible-lab` unless given `--all`,
-  since Day 15 turns `site.yml` into a role.
+  since Day 15 extends the same project with a role.
 - `break-and-fix.sh` writes its broken plays to `/tmp/day14-broken`, never
   into the project, and finishes by re-applying `site.yml` twice.
 - **Fixed after the first hardware run (2026-09-12):** `site.yml` had `copy`
@@ -990,11 +990,131 @@ changed forever, and is skipped by `--check` so the dry run predicts nothing),
 next), handler expectations (no change means no restart; a failed play drops
 pending handlers), and a missing `become`.
 
-Day 14 has **not** been run on hardware yet - the authoring sandbox has no
-second host. CI lints it only.
+**Ran green on hardware (2026-09-13).** After the two fixes above, the second
+run reported `changed=0` on node1 and `verify.sh` printed **6 passed, 0 failed,
+2 for you to judge**. Committed by the owner as `3da954e`. The hardware run
+also surfaced the memory floor described below.
 
 Packages the control VM needs: `sudo dnf install -y ansible-core`. The managed
 host needs nothing beyond the Python Rocky already ships.
+
+### Day 15 was written (2026-09-13)
+
+`days/day15/` ships five scripts, a rewritten README and an eight-check verify.
+The day is Ansible roles: Days 11, 12 and 13 become `roles/hardening`, and the
+role is applied to `node2`, which has never been configured by hand.
+
+Decisions worth knowing:
+
+- **The play is a new `hardening.yml`, not Day 14's `site.yml`.** This is a
+  deviation from the stub verify, which ran `site.yml -l node1,node2`. Leaving
+  `site.yml` alone means Day 14 still passes its own verify without node2
+  existing, and the split is defensible on its own terms: the baseline and the
+  hardening policy are different things, applied at different times. The
+  rewritten `verify.sh` uses `hardening.yml` throughout.
+- **`ansible-core` ships no collections, so there is no `selinux` or
+  `firewalld` module.** Confirmed on the Day 14 hardware run
+  (`ansible [core 2.14.18]`, no `ansible.posix`, no `community.general`). The
+  role therefore does SELinux with `lineinfile` on `/etc/selinux/config` plus
+  `getenforce` + a `when:`-guarded `setenforce 1`, and firewalld with
+  `firewall-cmd --permanent --list-*` registered, then `--add-*` guarded by
+  `when: item not in ...`, with a `firewall-cmd --reload` handler. Longer than
+  a module call and better teaching material: the pattern *is* what a module
+  does internally. Do not "improve" this by adding a `collections:` key -
+  it fails on a stock `dnf install ansible-core`.
+- **Order in `tasks/main.yml` is a safety property, and it is commented as
+  one.** `ssh.yml` creates the `labssh` group and adds the login account
+  *before* the templated drop-in lands `AllowGroups labssh`. Reversed, `sshd
+  -t` still validates (a group need not exist for the config to parse), the
+  reload succeeds, and the host refuses every subsequent connection including
+  Ansible's. `break-and-fix.sh --hard` describes this and the equivalent
+  "apply the role to control" mistake rather than performing either.
+- **`epel-release` is its own task before the package list**, because
+  `fail2ban` and `fail2ban-firewalld` are not in the Rocky repositories and a
+  single package task fails on a clean host at name resolution time.
+- **`hardening_open_ports` defaults to `[]`;** `8080/tcp` lives only in
+  `group_vars/webservers.yml`. That is the day's precedence lesson made
+  physical - node1 opens the port, node2 does not, same role, and editing
+  `defaults/main.yml` changes neither. `vars/main.yml` holds the paths the
+  handlers depend on, deliberately at high precedence.
+- **Vault.** `group_vars/lab/` is the directory form (`vars.yml` readable,
+  `vault.yml` encrypted), the password is a generated 32-char string in
+  `~/.vault-pass-lab` at 0600 *outside* the project, and `ansible.cfg` gains
+  `vault_password_file` so no command needs the flag. `setup.sh` only encrypts
+  when the file does not already start with `$ANSIBLE_VAULT`, because
+  `ansible-vault encrypt` is not idempotent - twice gives you a vault inside a
+  vault. The role reads `hardening_alert_token`, which points at
+  `vault_hardening_alert_token`, so `grep -r vault_` finds every secret.
+- `setup.sh` refuses root for Day 14's reasons, takes both node addresses as
+  arguments (falling back to the inventory), refuses any address belonging to
+  `control` itself, and runs the Day 14-style classified `ssh -v` precheck
+  against both nodes before writing anything.
+- The five failures in `break-and-fix.sh`: a `--limit` typo (`skipping: no
+  hosts matched`, **exit 0** - a green run that deployed nothing), editing
+  `defaults/` that `group_vars` overrides, a tag that skipped the task the
+  requested one depended on, a handler dropped by a failed play, and a missing
+  vault password (whose error names a file, not the variable people hunt for).
+  Broken plays go to `/tmp/day15-broken`, never into the project, and the
+  script finishes by re-applying `hardening.yml` twice.
+- `teardown.sh` is itself a playbook with every state inverted. It targets the
+  `fresh` group (node2) by default because node1's hardening was earned by
+  hand on Days 11-13, leaves SELinux enforcing, leaves firewalld installed,
+  and leaves the `labssh` group alone - removing it during a cleanup is its own
+  lock-out. `--all` also targets node1 and deletes the role and playbook.
+- `verify.sh` has eight automatic checks: not-root, role layout, both nodes
+  ping, syntax, applies with `failed=0` on both, second run `changed=0` on
+  both, node2 `Enforcing`, node2 `passwordauthentication no`, plus the vault
+  file being ciphertext. Two `YOU` items: hand-broke a setting and found it
+  with `--check`, and can explain why editing `defaults/` did nothing.
+
+- **Fixed during the first hardware attempt (2026-09-13):** the README's run
+  block listed only `./lab/lab.sh push control ~/.ssh/id_ed25519` and omitted
+  the bare `./lab/lab.sh push control`. With a path argument `push` copies that
+  one file and nothing else, so `~/lab` on control held a key and no `days/`,
+  and `cd ~/lab/days/day15` failed. Day 14's README has both lines; Day 15's
+  now has both plus a paragraph explaining the difference. Worth remembering
+  for Days 16-20: **every day that needs a credential needs two push lines.**
+
+- **Also fixed during that attempt:** `setup.sh` died with "no ansible.cfg
+  here. Run Day 14's setup.sh first" on a rebuilt `control` VM. The Ansible
+  project lives in the VM's home directory, not in the repository, so a
+  `lab.sh down` between days takes it with it - making a previous day's setup
+  a hidden prerequisite. **Day 14 is no longer required:** if `ansible.cfg` is
+  absent, Day 15 writes the whole file (Day 14's config plus
+  `vault_password_file`); if present, it only inserts the vault line. The
+  Day 15 README gained a "Do you need Day 14's setup first?" section. General
+  rule for Days 16-20: **a day may extend a previous day's project, but must
+  not require it**, because VM home directories do not survive a rebuild.
+
+**Ran green on hardware (2026-09-13),** on all three VMs, after the two fixes
+above: `verify.sh` printed **9 passed, 0 failed, 2 for you to judge**. The
+second `hardening.yml` run reported `changed=0` on both nodes, node2 came out
+`Enforcing` with password auth off having never been touched by hand, and
+`break-and-fix.sh` reproduced all five failures.
+
+Packages: `sudo dnf install -y ansible-core` on control, nothing on the nodes.
+
+### The memory floor was raised across the lab (2026-09-13)
+
+The Day 14 hardware run printed `WARNING Requested memory 1024 MiB is less
+than the recommended 1536 MiB for OS rocky9` when creating `control`. Advisory,
+not fatal - but it is the same wall Day 12 hit as a bare `Killed` from `dnf`
+when node1 had 768 MB, so the guess was raised rather than explained away.
+
+- `control` 1024 -> **1536 MB**, `node1` **2048 MB**, `node2` 1024 -> **2048 MB**
+- `lab/lab.sh`: `vm_mem()` values, the header comment, and the free-memory
+  check thresholds (3800 -> 4200 MB for two VMs, warn text "under 3.2 GB" ->
+  "under 3.7 GB")
+- Two-VM days are now **~3.5 GB** and Day 15 is **~5.5 GB**, updated in
+  `README.md`, `docs/curriculum.md`, this file's VM and budget tables, and the
+  memory lines in `days/day12`, `days/day14`, `days/day15`, `days/day16` and
+  `days/day20`
+- The rule, written down in `lab/lab.sh` and `README.md`: **nothing in this lab
+  runs below 1536 MB.** Below that, `dnf` is OOM-killed with no explanation.
+
+On an 8 GB laptop Day 15's 5.5 GB is tight. Both `README.md` and the Day 15
+README now say to close the browser, or to start `node1` after the role has
+been applied to `node2` - which is what `--limit` is for.
 
 ### Day 13 was written (2026-09-12)
 
@@ -1441,8 +1561,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 14 are done (5 scripts each).
-   Days 05-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 through 15 are done (5 scripts each).
+   Days 16-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -1543,4 +1663,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-14 which are written (Days 12 and 13 run on hardware, Day 14 lint-only so far). `tests/cli.sh`: 307 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-15 which are written and all run green on hardware (Days 12, 13, 14 and 15). `tests/cli.sh`: 322 passed, 0 failed.

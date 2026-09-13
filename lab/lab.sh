@@ -25,9 +25,14 @@
 # which cost no RAM at all.
 #
 # Memory budget on an 8 GB machine:
-#   control  1024 MB
-#   node1     2048 MB
-#   node2     768 MB   (only needed on Day 15)
+#   control  1536 MB
+#   node1    2048 MB
+#   node2    2048 MB   (only needed on Day 15)
+#
+# Nothing here is below 1536 MB, which is Rocky 9's recommended minimum and
+# the number virt-install warns about. Under that, 'dnf install' is the first
+# thing the kernel's OOM killer reaches for, and the failure it produces -
+# 'Killed' with no explanation - looks nothing like a memory problem.
 
 set -euo pipefail
 
@@ -90,10 +95,10 @@ die()  { bad "$*"; exit 1; }
 
 vm_mem() {
   case "$1" in
-    control) echo 1024 ;;
+    control) echo 1536 ;;
     node1) echo 2048 ;;
-    node2) echo 768 ;;
-    *) echo 768 ;;
+    node2) echo 2048 ;;
+    *) echo 1536 ;;
   esac
 }
 
@@ -392,13 +397,13 @@ cmd_check() {
   local avail
   avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo)
   printf '         %s MB available now\n' "$avail"
-  if (( avail >= 3800 )); then
-    ok "enough for control + node1 (3072 MB)"
-  elif (( avail >= 3200 )); then
+  if (( avail >= 4200 )); then
+    ok "enough for control + node1 (3584 MB)"
+  elif (( avail >= 3700 )); then
     warn "tight — run one VM at a time, or close your browser during labs"
     warns=$((warns + 1))
   else
-    warn "under 3.2 GB available — close applications before 'lab.sh up'"
+    warn "under 3.7 GB available — close applications before 'lab.sh up'"
     warns=$((warns + 1))
   fi
 

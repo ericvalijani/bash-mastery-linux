@@ -72,7 +72,7 @@ Day 12 runs on **`node1`**. Day 11 left it running; if you took it down, a rebui
 ./lab/lab.sh up node1            # 2 GB, about a minute
 ```
 
-The curriculum lists this day as `control + node1`, because a bastion needs two hosts. Two VMs use about 3 GB. **You do not need the second VM for the automatic checks** - all five run on `node1` alone - and section 3 below gives you a one-host version of the ProxyJump exercise. Bring up `control` as well only if you have the memory to spare.
+The curriculum lists this day as `control + node1`, because a bastion needs two hosts. Two VMs use about 3.5 GB. **You do not need the second VM for the automatic checks** - all five run on `node1` alone - and section 3 below gives you a one-host version of the ProxyJump exercise. Bring up `control` as well only if you have the memory to spare.
 
 ### 2. Copy the repo onto the VM
 

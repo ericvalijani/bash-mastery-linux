@@ -6,7 +6,7 @@
 |---|---|
 | **Phase** | Production operations |
 | **Runs on** | VM: control + node1 |
-| **Memory** | ~3 GB (two VMs) |
+| **Memory** | ~3.5 GB (two VMs) |
 | **Verified by** | lint + your lab |
 
 ## Why this day exists

@@ -84,16 +84,18 @@ Designed for an 8 GB laptop, measured rather than hoped.
 | 01 | one VM (`control`) | ~1 GB |
 | 02–05, 11–13, 17, 19 | one VM (`node1`) | ~2 GB |
 | **06–10, 18** | **no VM at all** | **0 MB** |
-| 14, 16, 20 | two VMs | ~3 GB |
-| 15 | three VMs | ~3.8 GB |
+| 14, 16, 20 | two VMs | ~3.5 GB |
+| 15 | three VMs | ~5.5 GB |
 
 | VM | RAM | Role |
 |---|---|---|
-| `control` | 1024 MB | Where you sit. Ansible runs from here |
+| `control` | 1536 MB | Where you sit. Ansible runs from here |
 | `node1` | 2048 MB | The machine you configure and break |
-| `node2` | 768 MB | Starts clean. Only Day 15 needs it |
+| `node2` | 2048 MB | Starts clean. Only Day 15 needs it |
 
 Disks are thin qcow2 overlays on one shared base image, so three VMs cost barely more than one until you install packages. Budget about 12 GB of disk. Peak memory happens on Day 15 only.
+
+No VM is given less than 1536 MB, which is the minimum Rocky 9 recommends and the number `virt-install` warns about. Smaller VMs boot happily and then get `dnf` killed by the kernel mid-transaction, which reads as `Killed` and looks nothing like a memory problem. If Day 15's three VMs are too much for your machine, close the browser first - or bring up `control` and `node2`, apply the role, and start `node1` afterwards.
 
 ---
 
