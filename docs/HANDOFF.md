@@ -3,11 +3,12 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–17 scripts written**;
-Days 12, 13, 14, 15 and 16 verified on real Rocky 9 lab VMs
-**Executed against real KVM hardware through Day 16.** See §8.
+**Status:** scaffold complete, 20 days written, **Days 01–18 scripts written**;
+Days 12 through 17 verified on real Rocky 9 lab VMs, Day 18 verified on the
+owner's laptop (it needs no VM)
+**Executed against real KVM hardware through Day 17.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
 ---
@@ -81,7 +82,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 17 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 18 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -235,7 +236,9 @@ still have gained something whole.
 Days are otherwise self-contained, but these links are intentional and must
 not be broken when editing:
 
-- **06 → 07, 08, 09, 18.** Day 06 builds the namespace topology the rest use.
+- **06 → 07, 08, 09.** Day 06 builds the namespace topology the rest use.
+  Day 18 is the exception: it builds its own namespaces (`sw18`, `h18a`...)
+  so both topologies can be up at once and Days 07-09 keep working.
 - **10 → 17.** Day 17 serves TLS using the private CA issued on Day 10.
 - **08 → 17.** Day 17 needs `www.lab.test` to resolve. Day 08's zone serves it
   properly; `setup.sh` writes `127.0.0.1 www.lab.test` to `/etc/hosts` so the
@@ -397,7 +400,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **352 passed, 0 failed** (was 337; Day 17's five scripts added checks) |
+| `tests/cli.sh` | **367 passed, 0 failed** (was 352; Day 18's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -1175,6 +1178,63 @@ to `0.0.0.0`, and opening 8080 "to test something".
 Not yet run on hardware. `bash -n` clean, `tests/cli.sh` **352 passed, 0
 failed**, exec bits set on all six files.
 
+
+### Day 18 was written (2026-09-14)
+
+`days/day18/` now ships five scripts, a full README and a 22-check verify.
+The day is one VLAN-aware bridge in a network namespace with five things
+plugged into it: two access hosts in VLAN 10, one in VLAN 20, a trunk host
+with `t-eth0.10` and `t-eth0.20`, and a two-leg `active-backup` bond.
+
+- **0 MB, no VM.** Namespaces `sw18`, `h18a`, `h18b`, `h18c`, `h18t`, `h18d`,
+  deliberately named apart from Day 06's `client`/`router`/`resolver`/`auth`
+  so both topologies can be up at the same time. `teardown.sh` removes only
+  Day 18's six.
+- **The point of the day** is that `ip link` shows a port as UP whether it is
+  in the right VLAN, the wrong VLAN or none at all. Only `bridge vlan show`
+  can tell you, and `vlan_filtering` is a flag that can be off while every
+  table below it is perfect.
+- **Verify is layer-2 honest:** the bridge has no address and
+  `net.ipv4.ip_forward` is 0 in `sw18`, so the isolation cannot be mistaken
+  for a firewall rule. Two checks assert that explicitly.
+- **Bonding is optional.** Some stripped-down kernels have no `bonding`
+  module. `setup.sh` drops `/run/day18/bond.enabled` when it built the bond,
+  and the three bond checks are written `[ ! -f /run/day18/bond.enabled ] ||
+  ...` so they pass without asserting on such a kernel instead of failing the
+  day for a kernel the reader did not build.
+- **CI executes this day for real.** Day 18 was already in the
+  `verifiable-days` matrix and in `NETNS_DAYS` in `lab/ci-day.sh`; now that
+  `scripts/setup.sh` exists, `ci-day.sh` runs setup and verify instead of
+  printing `SKIPPED (not yet implemented)`.
+- `break-and-fix.sh` has four failures plus `--hard`: port removed from its
+  only VLAN, right VLAN with the wrong PVID (connectivity to the *wrong*
+  network, which is worse than an outage), trunk made untagged, active bond
+  leg taken down (nothing happens, which is the lesson), and under `--hard`
+  `vlan_filtering 0` with every table left intact.
+
+#### Two failures on the first real run, both fixed
+
+The first run on the owner's laptop printed **20 passed, 2 failed**. Both
+were setup bugs, not verify bugs, and both are worth remembering:
+
+1. **`VLAN 1 was removed from every port` FAILED.** `setup.sh` deleted VLAN 1
+   from every *port* but not from the bridge device itself. The bridge has
+   its own row in the VLAN tables and needs the `self` flag:
+   `bridge vlan del dev br0 vid 1 self`. Fixed in step 2, and the verify
+   check now strips the port column with `sed` so continuation lines are
+   examined too.
+2. **`forwarding is off in the switch namespace` FAILED.** The check assumed
+   a fresh namespace starts with `net.ipv4.ip_forward=0`. That is usual but
+   not guaranteed - the value can come from a host where Docker, a VPN or an
+   old `sysctl.d` file turned it on. `setup.sh` now sets it explicitly
+   (`echo 0 > /proc/sys/net/ipv4/ip_forward` inside the namespace) and says
+   so, and verify reads the `/proc` file rather than calling `sysctl`, which
+   lives in `/sbin` on some distributions and would look like "forwarding is
+   on" when merely absent. **Set the state the day depends on; do not assume
+   a default.** Same rule as Day 17's firewalld lesson.
+
+Re-run `sudo ./scripts/setup.sh` and then `sudo ./verify.sh`: **22 passed,
+0 failed, 2 for you to judge.**
 ### Day 16 was written (2026-09-13)
 
 `days/day16/` now ships five scripts, a rewritten README and a twelve-check
@@ -1698,15 +1758,16 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 17 are done (5 scripts each).
-   Days 18-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 through 18 are done (5 scripts each).
+   Days 19-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
    ships only the changed files**, which will usually be
    `days/dayNN/scripts/*`, `days/dayNN/README.md`, `days/dayNN/verify.sh`,
    and this handoff.
-3. **Add `scripts/setup.sh` for the CI days** (04, 06, 07, 08, 09, 10, 18).
+3. **Add `scripts/setup.sh` for the CI days** (04, 06, 07, 08, 09, 10; 18 is
+   done, and is now a real CI job rather than a `SKIPPED` one).
    Each one converts a `SKIPPED` CI job into a real one.
 4. **Git.** Not initialised. No remote, no first commit. The owner is doing
    this themselves.
@@ -1800,4 +1861,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-17 which are written; Days 12, 13, 14, 15 and 16 run green on hardware, Day 17 is written and not yet run. `tests/cli.sh`: 352 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-18 which are written; Days 12 through 17 run green on hardware (Day 17: 19 passed, 0 failed, 2 to judge) and Day 18 runs green on the owner's laptop with no VM. `tests/cli.sh`: 367 passed, 0 failed.
