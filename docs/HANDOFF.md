@@ -5,9 +5,9 @@
 
 **Last updated:** 2026-09-14
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–18 scripts written**;
+**Status:** scaffold complete, 20 days written, **Days 01–19 scripts written**;
 Days 12 through 17 verified on real Rocky 9 lab VMs, Day 18 verified on the
-owner's laptop (it needs no VM)
+owner's laptop (it needs no VM), Day 19 written and not yet run
 **Executed against real KVM hardware through Day 17.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
@@ -82,7 +82,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 18 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 19 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -400,7 +400,7 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **367 passed, 0 failed** (was 352; Day 18's five scripts added checks) |
+| `tests/cli.sh` | **382 passed, 0 failed** (was 367; Day 19's five scripts added checks) |
 | `bash -n` on all 85 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
@@ -1235,6 +1235,248 @@ were setup bugs, not verify bugs, and both are worth remembering:
 
 Re-run `sudo ./scripts/setup.sh` and then `sudo ./verify.sh`: **22 passed,
 0 failed, 2 for you to judge.**
+
+### Day 19 was written (2026-09-14)
+
+`days/day19/` now ships five scripts, a full README and a 22-check verify.
+The day is the two detection sensors, side by side: **Suricata** on the wire
+and **auditd** on the disk. Runs on node1 only, ~2 GB, no second VM.
+
+- **Suricata comes from EPEL**, like Day 12's fail2ban. `setup.sh` enables
+  `epel-release` if it has to, then installs `suricata audit jq bind-utils`.
+- **The interface is detected, never assumed.** The packaged `af-packet`
+  section says `eth0`; Rocky 9 on libvirt is `enp1s0`. `setup.sh` rewrites
+  only the first `interface:` line inside `af-packet:` using the device from
+  `ip route show default`, and verify asserts the two still agree. An IDS on
+  the wrong interface is green in systemd and detects nothing.
+- **No ruleset is downloaded.** `suricata-update` is deliberately not run: the
+  day is about rules you wrote. `setup.sh` creates an empty
+  `/var/lib/suricata/rules/suricata.rules` so the packaged config stays valid,
+  and adds `/etc/suricata/rules/lab.rules` to `rule-files` by absolute path so
+  a future `suricata-update` cannot overwrite it. It also keeps memory small,
+  which matters on a 2 GB VM - the ET open ruleset would not be kind here.
+- **Two local rules**, sid 9000001 (ICMP echo request) and sid 9000002 (a
+  `dns.query` content match on a canary name). Verify checks that no lab sid
+  is below 1000000, which is the public-ruleset range.
+- **Setup fires both sensors and fails if nothing is recorded.** It pings the
+  gateway, looks up the canary name, reads `/etc/shadow`, writes to
+  `/etc/lab-canary`, then waits up to 30s for sid 9000001 in `eve.json` and
+  for a SYSCALL record under key `shadow_watch`. A detection stack nobody has
+  seen fire is a detection stack you do not know works.
+- **auditd rules** in `/etc/audit/rules.d/99-lab.rules`: `/etc/shadow` and
+  `/etc/sudoers` (`-p wa`), `/etc/lab-canary` (`-p rwa`, so reads count), and
+  `-a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=unset
+  -k root_cmd`. Loaded with `augenrules --load`, never by restarting the
+  daemon - `systemctl restart auditd` is refused by design, and
+  `break-and-fix.sh` shows that refusal on purpose.
+- **`augenrules --check` is a verify check**, because "the file says one thing
+  and the kernel says another" is the third appearance of the same lesson
+  after Day 11's sysctl files and Day 16's wg config.
+- `break-and-fix.sh` has four failures plus `--hard`: a rule missing its
+  semicolon (which fails `-T` for the entire ruleset, not just that rule), a
+  valid rule never reloaded, an audit rule in the file but not in the kernel,
+  and `auditctl -D` (perfect files, empty kernel rule set). `--hard`
+  additionally points `af-packet` at `lo` and leaves all five live.
+- **CI still only lints this day.** No GitHub runner has an interface worth
+  capturing or a kernel audit subsystem the job can rely on, so Day 19 is not
+  added to the `verifiable-days` matrix. `tests/cli.sh` covers the five
+  scripts statically.
+#### 'lab-ids watch' showed nothing, because waiting looks like broken
+
+The two-session demo was run correctly - `lab-ids watch` in one session,
+`lab-ids trigger` three times in the other - and the watching session printed
+nothing, so it was Ctrl-C'd within seconds each time. Nothing was broken: on a
+2 GB VM suricata batches writes to eve.json and the alert lands tens of
+seconds later, well after anyone staring at a blank screen has given up.
+
+The design mistake was mine. An exercise whose success condition is "the user
+waits long enough", with no feedback while waiting and no known wait time, is
+not an exercise.
+
+Fixed:
+
+- new `lab-ids prove`: counts alerts in eve.json, fires both sensors, polls
+  every 3s for up to 90s, then reports how long the flush actually took and
+  prints the alert. One session, no coordination, no guessing. This is now the
+  recommended path in both the README and setup.sh's closing note.
+- `lab-ids watch` keeps the two-session demo but is no longer ambiguous: it
+  prints the last 3 alerts already in the log so you see output immediately,
+  says the wait can be tens of seconds, and runs a background heartbeat that
+  prints `... still watching, Ns, no new alert yet` every 15s. The heartbeat
+  is killed by a trap on EXIT/INT/TERM.
+- README section rewritten as `### Seeing the flush interval for yourself`,
+  leading with `prove`, with the delay itself called out as the lesson.
+
+**Rule for later days:** any step that waits on an asynchronous system must
+show progress while waiting and state the expected wait. Otherwise "working"
+and "hung" are indistinguishable, and the reader learns to distrust the lab
+rather than the system.
+
+#### The live-watch hint was unusable, and now it is a subcommand
+
+setup.sh ended with a note saying to run `lab-ids trigger` "from another
+terminal" while watching a `tail -f ... | jq ...` pipeline. Two problems: the
+two-session workflow was never explained in the README, and the pipeline was
+printed with escaped quotes, so pasting it appended it to the previous prompt
+and produced `parse error: Invalid numeric literal at line 2, column 4`.
+
+Fixed:
+
+- new `lab-ids watch` subcommand follows eve.json and prints one compact line
+  per alert (`tail -n 0 -F | grep --line-buffered | jq -c --unbuffered`).
+  `--line-buffered` and `--unbuffered` matter: without them the alerts sit in
+  a 4 KB pipe buffer and arrive in silent bursts, which looks exactly like a
+  broken sensor.
+- setup.sh's closing note now spells out session A / session B, says not to
+  paste both into one prompt, and gives `./lab/lab.sh ssh node1` for opening
+  the second one.
+- README gained a `### Watching an alert arrive, live (two SSH sessions)`
+  section with both sessions written out, the Ctrl-C instruction, and the raw
+  pipeline for anyone who would rather type it than trust the wrapper.
+- Usage strings and the scripts table list `watch` alongside
+  `status|alerts|audit|trigger`.
+
+**Rule for later days:** anything a script tells the user to run must exist in
+the README too, and any command that does not return on its own must say so
+and say which terminal it belongs in.
+
+#### Fourth run: the burst was not the answer - auditd's freq was
+
+Even with 60 reads of the canary and a 30s wait, setup still reported no
+audit event, with `backlog 0`, `flush = INCREMENTAL_ASYNC freq = 50` and
+13294 lines already in audit.log. verify, run right after, passed all 22 -
+so the events did land, just later than setup was willing to wait.
+
+`backlog 0` was the tell: the kernel queue was empty, meaning the records had
+already been handed to auditd and were sitting in *its* buffer, unwritten.
+Generating more events does not help when the delay is on auditd's side.
+
+Fixed properly this time:
+
+- step 6 now sets `freq = 1` in `/etc/audit/auditd.conf` (original copied to
+  `$BACKUP_DIR/auditd.conf.orig`) and reloads auditd with
+  `systemctl reload auditd`, falling back to `service auditd reload` then
+  `pkill -HUP auditd`. With freq = 1 every record is written as it happens,
+  which is what you want on a machine you are actually watching.
+- step 8's audit proof is **no longer fatal**. The rules are loaded and the
+  network half is proven by then, so a slow flush prints the diagnosis plus
+  `sudo ausearch -k lab_canary -ts today` and continues to `done`. verify is
+  the gate, and it checks the audit event anyway.
+- teardown restores the packaged `auditd.conf` and reloads auditd.
+
+**Lesson for later days:** setup should hard-fail only on state it can
+control. Asynchronous evidence belongs in verify, or in a warning, never in a
+`die` - a script that aborts because a log has not been flushed teaches the
+wrong reflex.
+
+#### Third run on node1: setup failed the audit proof, verify passed it
+
+setup died on `auditd is running and the rule is loaded, but nothing was
+recorded` - with the diagnosis printing `auditd: active`, `kernel enabled: 1`,
+`canary rule: -w /etc/lab-canary -p rwa -k lab_canary`, `backlog 0` - and then
+`verify.sh` immediately reported 22 passed, 0 failed, including `an audit
+event was actually recorded`. Both were telling the truth.
+
+Two things differed:
+
+1. setup searched `ausearch -k lab_canary -ts recent` (last ten minutes);
+   verify searches with no `-ts`, so it matched an older event from a previous
+   run or from `lab-ids trigger`.
+2. The real cause: **auditd buffers**. `/etc/audit/auditd.conf` ships
+   `flush = INCREMENTAL_ASYNC` with `freq = 50`. The kernel hands each record
+   to auditd immediately, but auditd writes `audit.log` only every 50 records.
+   On an idle VM, one read of the canary sits in that buffer, so `ausearch`
+   finds nothing while the event has genuinely been recorded. `backlog 0`
+   confirmed the kernel queue was empty - the records were already with
+   auditd, unwritten.
+
+Fixed in setup step 8: generate a burst of 60 reads of the canary, past
+`freq`, instead of one; search `-ts today`; keep accessing the file between
+retries; and add `flush/freq` and `audit.log` line count to the failure
+diagnosis. README gained the buffering lesson - a log search that says
+"clean" about a machine that is not.
+
+**Lesson for later days:** when setup and verify disagree, compare their
+queries before suspecting the host. Time windows and buffering explain more
+disagreements than broken configuration does.
+
+#### Second run on node1: two verify bugs and a wrong audit trigger
+
+After the readiness fix, setup got all the way to step 8, proved sid 9000001,
+and then died on `auditd is running and the rule is loaded, but nothing was
+recorded`. verify then reported 20 passed, 2 failed: `the kernel's rules match
+the files (augenrules --check)` and `the canary watch includes reads, not only
+writes`. None of the three were the machine's fault.
+
+1. **Permission letters decide what is recordable.** setup proved the audit
+   half by reading `/etc/shadow` and searching for a `shadow_watch` event, but
+   that watch is `-p wa` - writes and attribute changes only. A read of it is
+   never recorded, so the proof could not have passed on a healthy host.
+   setup now reads and writes `$CANARY`, which is watched `-p rwa`, searches
+   `-k lab_canary`, retries for 20s because auditd writes asynchronously, and
+   on failure prints auditd state, kernel enabled, the canary rule and the
+   backlog. The `/etc/shadow` read is kept and its silence is now the lesson.
+2. **`augenrules --check` prefixes its own name**: the output is
+   `/sbin/augenrules: No change`, not `No change`, so the string equality in
+   verify could never be true. Now matched with `grep -q 'No change'`.
+3. **`auditctl -l` prints watches as `-w /etc/lab-canary -p rwa -k lab_canary`.**
+   verify was grepping for `perm=.*r`, which is the `ausearch` field name, not
+   the `auditctl -l` format. Now the permission letters are extracted and
+   checked for `r`.
+
+The verify check `an audit event was actually recorded` moved from
+`shadow_watch` to `lab_canary` for the same reason as 1. Still 22 checks and
+2 manual.
+
+**Lesson for later days:** a check that has never once passed is not a check.
+All three of these were written against the wrong output format or the wrong
+permission model and would have passed review by reading alone.
+
+#### First run on node1 failed: 'active' is not 'ready'
+
+`setup.sh` step 8 died with `no alert for sid 9000001 - is eth0 really the
+interface with traffic?` after step 5 had already printed `no eve.json yet`.
+The interface was right (this node1 names its NIC `eth0`, so the detection
+from `ip route show default` worked). The cause was timing: `systemctl
+is-active suricata` returns success as soon as the process exists, but
+Suricata then parses the config, builds the detection engine from every rule
+and creates capture threads before it looks at a single packet - tens of
+seconds on a 2 GB VM. The pings were sent into that gap, so as far as the IDS
+was concerned they never happened, and `eve.json` cannot report an alert it
+never had a chance to generate.
+
+Fixed in `setup.sh`:
+
+- new step 5b waits up to 120s for `Engine started` in
+  `/var/log/suricata/suricata.log`, which is the only line that means ready,
+  and bails early if the unit dies while waiting.
+- step 8 now sends traffic on a loop (24 rounds, ping + dig, 4s apart, up to
+  ~2 minutes) instead of once, because `eve.json` is flushed on an interval
+  as well - a single ping followed by an immediate grep is a race even on a
+  healthy host.
+- on failure it prints a diagnosis instead of guessing at one cause: the
+  configured interface, the real interface, the unit state, the eve.json line
+  count, whether the engine started, the rule count, and the last 20 lines of
+  `suricata.log`.
+- `lab-ids status` gained an "is the detection engine actually up" section for
+  the same reason.
+
+**The general lesson, now in the README:** a health check that asks systemd
+whether a sensor is working gets this wrong on every IDS, agent and log
+shipper there is. `active` is not `ready`.
+
+- **ShellCheck caught SC2294 on the first pre-commit run.** Day 19's tour and
+  break-and-fix scripts were written with `run() { ...; eval "$@"; }`, which
+  ShellCheck rejects ("eval negates the benefit of arrays"). Days 13-18 all
+  use `run() { printf '$ %s\n' "$1"; bash -c "$1" ...; }` and Day 19 now does
+  too. **Copy the existing helper rather than reinventing it** - the repo's
+  `shellcheck -x -S warning` gate is part of the house style.
+- **teardown.sh never stops auditd and never deletes `eve.json`.** Both are
+  deliberate: the audit trail is not a lab artefact, and deleting logs while
+  tidying up is how incidents become unexplainable.
+
+Next: Day 20 - backup, restore and the restore drill, the last day.
+
 ### Day 16 was written (2026-09-13)
 
 `days/day16/` now ships five scripts, a rewritten README and a twelve-check
@@ -1758,8 +2000,8 @@ In the order they should probably be done.
    qemu were not installed. Nothing past `check` has run for real yet:
    `image`, `up control`, `push control`, `ssh control` are still untested
    against real KVM, as are all five Day 01 scripts against real systemd.
-2. **Write the day scripts.** Days 01 through 18 are done (5 scripts each).
-   Days 19-20 ship an empty `scripts/` directory. They are written one day at a time, each run on
+2. **Write the day scripts.** Days 01 through 19 are done (5 scripts each).
+   Day 20 ships an empty `scripts/` directory. They are written one day at a time, each run on
    the real lab before the next is started — writing them in bulk would produce
    plausible code that has never met a Rocky VM. Delivery convention agreed with
    the owner: **Day 01 shipped as the complete repository; every day after that
@@ -1861,4 +2103,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-18 which are written; Days 12 through 17 run green on hardware (Day 17: 19 passed, 0 failed, 2 to judge) and Day 18 runs green on the owner's laptop with no VM. `tests/cli.sh`: 367 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-19 which are written; Days 12 through 17 run green on hardware (Day 17: 19 passed, 0 failed, 2 to judge), Day 18 runs green on the owner's laptop with no VM (22 passed, 0 failed, 2 to judge) and Day 19 is written and not yet run. `tests/cli.sh`: 382 passed, 0 failed.
