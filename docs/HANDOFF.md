@@ -3,12 +3,13 @@
 > Complete state of this repository in one file. Written to be pasted into a
 > fresh chat so an assistant can pick the work up cold, with no other context.
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 **Repo:** `bash-mastery-linux`
-**Status:** scaffold complete, 20 days written, **Days 01–19 scripts written**;
-Days 12 through 17 verified on real Rocky 9 lab VMs, Day 18 verified on the
-owner's laptop (it needs no VM), Day 19 written and not yet run
-**Executed against real KVM hardware through Day 17.** See §8.
+**Status:** scaffold complete, 20 days written, **Days 01–20 scripts written
+— the course is complete**; Days 12 through 17 and Day 19 verified on real
+Rocky 9 lab VMs, Day 18 verified on the owner's laptop (it needs no VM),
+Day 20 written and not yet run
+**Executed against real KVM hardware through Day 19.** See §8.
 **Licence:** MIT (`LICENSE`). Contribution rules: `CONTRIBUTING.md`.
 
 ---
@@ -82,7 +83,7 @@ Do not reopen these without being asked.
 | Networking days | `ip netns` on the host | Real kernel networking at zero RAM cost |
 | SELinux | its own day (13) | Requested specifically |
 | Verification | three tiers | See §5 |
-| Day scripts | shipped, written day by day | Days 01 through 19 done. A day with no scripts yet ships an empty `scripts/` and its README says so |
+| Day scripts | shipped, written day by day | Days 01 through 20 done — every day now ships scripts |
 | Blast radius | nothing the owner runs may put the laptop at risk | Every destructive step happens inside a VM or a namespace, both disposable |
 | Ansible's job | configuration manager, nothing more | Days 14-15 only. It deploys a hardening baseline to VMs; it is not the subject of the course |
 | Script style | commented as teaching material | The comments are half the lesson; these are not production scripts and should not be tightened into them |
@@ -400,8 +401,8 @@ all have to change with it. §10 lists every one of those pairings.
 
 | Check | Result |
 |---|---|
-| `tests/cli.sh` | **382 passed, 0 failed** (was 367; Day 19's five scripts added checks) |
-| `bash -n` on all 85 shell scripts | 0 failures |
+| `tests/cli.sh` | **397 passed, 0 failed** (was 382; Day 20's five scripts added checks) |
+| `bash -n` on all 90 shell scripts | 0 failures |
 | `lab/lab.sh --help` | stops cleanly at the memory budget |
 | `lab/lab.sh check` | runs every section, prints the full summary |
 | `lab/lab.sh bogus` | `FAIL unknown subcommand`, exit 1 |
@@ -1477,6 +1478,297 @@ shipper there is. `active` is not `ready`.
 
 Next: Day 20 - backup, restore and the restore drill, the last day.
 
+### Day 20 was written (2026-09-15)
+
+`days/day20/` now ships five scripts, a full README and a 22-check verify.
+The last day, and the only one whose subject is a proof rather than a
+configuration: **a backup on another host, on a timer, with a restore that has
+actually been run and timed.** Two VMs, ~3.5 GB.
+
+- **The repository lives on control, over sftp**:
+  `sftp:restic@<control-ip>:/srv/restic/repo`. A backup on the same disk as
+  the data is not a backup, so the day needs the second VM. node1 pushes;
+  control has no restic, no password, and no key back to node1 — if control is
+  compromised the attacker gets encrypted blobs.
+- **`setup.sh` is role-aware**, the Day 16 pattern:
+  `ROLE=${ROLE:-$(hostname -s)}`, overridable for a differently named host. It
+  runs in four passes, because a public key has to travel between two hosts
+  and no single command on one host can do that: control (create the user and
+  repo), node1 (install, seed `/srv/data`, generate root's key, print the
+  exact command, **exit 0**), control (authorise that key), node1 with
+  control's address (the real work). Pass 2 exiting 0 while asking for a
+  manual step is the same contract Day 16 used, and it says so in as many
+  words.
+- **The `restic` user has `/bin/bash`, deliberately.** `/sbin/nologin` is the
+  reflex for a service account and it breaks sftp: restic runs the remote
+  `sftp-server` through the login shell, so `nologin` gives "connection lost"
+  with nothing in any log to explain it. setup prints
+  `getent passwd restic | cut -d: -f7` so the learner sees the shell.
+- **`RESTIC_PASSWORD_FILE`, never `RESTIC_PASSWORD`.** `/etc/restic/password`
+  is 0600 root:root, generated with `openssl rand -base64 24`, and never
+  regenerated if it exists (that would orphan the repository).
+  `/etc/restic/env` carries the repository and the *path* to the password, and
+  verify asserts the env file contains no `RESTIC_PASSWORD=`.
+- **The timer is provable within ninety seconds.** `restic-backup.timer` has
+  `OnCalendar=*:0/10` as the real schedule *and* `OnActiveSec=30s` so the
+  first run happens while the learner is still watching, plus
+  `Persistent=true` and `AccuracySec=1s`. Step 8 polls `LastTriggerUSec` 30
+  times at 3s, states the expected wait up front, prints a progress line every
+  fifth attempt, and is **non-fatal** — Day 19's rules applied before they
+  could bite: a step that waits on an asynchronous system must show progress,
+  and must not hard-fail on state it does not control.
+- **`EnvironmentFile=` is the lesson of the service unit.** A timer's service
+  starts with almost no environment, which is why a backup can work by hand
+  and fail on the schedule. Failure 3 in `break-and-fix.sh` deletes that one
+  line, shows `lab-backup run` succeeding by hand and the same command exiting
+  non-zero under systemd, then puts it back.
+- **`lab-backup`** (`/usr/local/bin/lab-backup`, installed from
+  `scripts/lab-backup.sh`) is both the payload and the `ExecStart`:
+  `status | run | snapshots | drill | check | forget | unlock`. `run` takes the
+  snapshot **and** applies retention in the same unit of work —
+  `--keep-last 3 --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune` —
+  because a repository with no retention fills the disk it lives on, and a
+  full disk is how a working backup stops being one.
+- **`drill` is the day.** It restores `latest` into an **empty**
+  `/var/tmp/restore` (restoring on top of last week's restore is how a missing
+  file passes a `diff`), times it, runs
+  `diff -r /srv/data /var/tmp/restore/srv/data`, compares the mode of the 0600
+  `conf/token`, and writes the elapsed seconds to
+  `/var/lib/lab-backup/last-restore-seconds`. The comparison decides the exit
+  status: a restore that ran is not a restore that worked. Step 9 of setup runs
+  the drill and **is** fatal, because a mismatch is state the script controls.
+- **`break-and-fix.sh`: four failures, repaired, and a fifth behind `--hard`.**
+  (1) the password file is gone — the repository is intact and unreadable,
+  which is the same thing as lost, and the only failure in the file that cannot
+  be fixed from that host; (2) the repository host is unreachable, diagnosed by
+  proving the transport with `ssh -o BatchMode=yes` before suspecting restic;
+  (3) the missing `EnvironmentFile=`; (4) a stale lock from a `kill -9`'d
+  backup, cleared with `restic unlock` and never with `rm`.
+- **`--hard` is Day 19's silent-failure shape again, and worse**: an exclude
+  file swallows `/srv/data`, so the service exits 0, a new snapshot appears,
+  the timer is green, and every dashboard buildable from systemd says the
+  backup is healthy. The snapshots are empty. Nothing is hidden
+  (`systemctl cat`, `cat /etc/restic/exclude`, `restic ls latest`), the original
+  unit is kept at `/tmp/day20-broken/restic-backup.service.prehard`, and the
+  fix has to be proven with a drill rather than with a green unit.
+- **verify runs on node1, with sudo**, and is 22 checks in four groups:
+  configuration (env file 0600, repository is `sftp:`, password *file* not
+  password, 0600 root:root, data still present), repository (readable,
+  ≥1 snapshot, `restic check`, snapshot contains `/srv/data`, snapshot not
+  empty, no stale lock), schedule (payload executable, `keep-daily`, `--prune`,
+  unit exists, `EnvironmentFile=`, `ExecMainStatus` is 0, timer enabled, timer
+  active, `LastTriggerUSec` ≠ 0) and the restore (`diff -r`, mode preserved).
+  The stub's seven wordings are kept verbatim, as are both manual items.
+- **The "latest snapshot is not empty" check exists because of `--hard`.**
+  `restic snapshots` returning a row proves nothing;
+  `restic ls latest | grep -c '^/srv/data/'` is what catches an excluded
+  source. A check that cannot fail is not a check — Day 19's rule.
+- **`teardown.sh` is role-aware too.** On node1 it removes the timer, unit,
+  payload, restore tree and break-and-fix leftovers, and deliberately keeps
+  `/etc/restic` and `/srv/data` unless `--all`; deleting the password makes
+  every snapshot on control unreadable, so it takes an explicit flag. On
+  control, nothing happens without `--all`, which deletes the repository and
+  the account.
+- **The README lists what the day leaves unfinished on purpose**: append-only
+  repositories (node1 can delete what it wrote), off-host password custody,
+  `restic check --read-data`, and monitoring the *absence* of backups. It also
+  spells out `set -a; . /etc/restic/env; set +a` for running `restic` by hand,
+  because every command a script mentions has to exist in the README.
+
+`tests/cli.sh`: **397 passed, 0 failed** (was 382). Not yet run on hardware —
+it needs both VMs and the four-pass key exchange.
+
+Two README gaps fixed after the first review, both fair hits: the "Run it"
+section had no `lab.sh up / status / push / ssh` block (every earlier day has
+one, and this day needs `push` to **both** hosts plus two SSH sessions because
+the passes alternate between them), and the reset snippet under `--hard` was a
+bare `teardown.sh && setup.sh <control-ip>` with no host named — which reads
+like "terminate both hosts" and is wrong in any case. It is now explicitly
+**node1 only**, with the reason it is one pass rather than four (the password
+file and the authorised key on control both survive `--hard`), and the same
+wording replaced the corresponding `note` in `break-and-fix.sh`. A new
+**Tear it down** section covers both hosts in order, node1 first, with the
+`--all` semantics on each and `./lab/lab.sh down control node1` as the fast
+path. Also removed an unused `RESTORE=` from `setup.sh` (ShellCheck SC2034 in
+the owner's pre-commit run; the variable belongs to `lab-backup.sh`, which
+uses it).
+
+**First hardware run found a real bug: SELinux on control silently refuses
+node1's key.** Pass 4 died at step 4 with `failed: the repository host is not
+reachable as restic`, while control had just said `authorised the key in
+/srv/restic/.ssh/authorized_keys`. Nothing about the owner, the mode or the
+key was wrong. sshd will only read an `authorized_keys` labelled
+`ssh_home_t`, and `/srv/restic` is not a home directory as far as the policy
+is concerned, so the file came out `var_t` and the client got
+`Permission denied (publickey)` with nothing useful logged on control. This is
+the price of putting a home under `/srv`, which the day does deliberately.
+`setup_control()` now installs `policycoreutils-python-utils` if `semanage` is
+missing, adds the equivalency `semanage fcontext -a -e /home/restic
+/srv/restic`, runs `restorecon -RF`, also does a direct
+`chcon -R -t ssh_home_t` as a fallback, and prints whether the resulting label
+is right. The node1-side failure message was also wrong in a way that wasted
+the owner's time: it suggested `ssh -v restic@<control>`, which runs as the
+calling user, has no key on control, and is therefore denied for a completely
+unrelated reason. It now says `sudo ssh -v -i /root/.ssh/id_ed25519` and names
+SELinux as the suspect if the key is authorised but still refused.
+
+**Second hardware run: setup died silently at step 8 because of `grep -c`.**
+The screen ended with `ok the scheduled run exited 0` and a shell prompt - no
+step 9, no error, exit status invisible because the owner's next command
+replaced it. The line was
+`COUNT="$(restic snapshots --json | grep -c short_id)"`, and `grep -c` exits 1
+when it counts zero, which under `set -euo pipefail` kills the script on the
+spot. So the repository was empty, the drill was never run by setup, and the
+owner's manual `lab-backup drill` reported `Fatal: failed to find snapshot`.
+Now `|| true` with a `COUNT=0` floor, and on zero snapshots setup prints
+`journalctl -u restic-backup.service -n 20` before taking a backup by hand, so
+the reason the scheduled run produced nothing is on screen rather than
+guessed. The `ok the scheduled run exited 0` claim was dishonest too:
+`ExecMainStatus` is 0 for a unit that has never run at all, so step 8 now
+checks `ExecMainStartTimestamp` first and says so plainly when the service has
+not started yet.
+
+**Then the lock refused to go, and `unlock` had been lying about it.**
+After the recovery pass the day scored `21 passed, 1 failed`, with only
+`no stale lock is holding the repository` red. Cause: `restic unlock`
+removes only locks it can PROVE are stale - same host, pid not running -
+and the lock `kill -9` leaves in failure 4 is often not provably stale, so
+it survives. Every caller treated one `restic unlock` as success:
+`cmd_unlock` printed "removing stale locks" and stopped, `setup_node1`
+printed "cleared a stale lock" without checking, and break-and-fix said
+"fix: remove locks that no live process owns" and moved on. Now
+`lab-backup unlock` counts the locks after unlocking, says `N lock(s)
+survived - restic will not call them stale`, refuses to escalate while
+`restic-backup.service` is active, and otherwise runs `restic unlock
+--remove-all` and explains why that is not the default; setup escalates the
+same way during a recovery pass; and break-and-fix demonstrates the
+escalation instead of assuming the first unlock worked. README failure 4
+and step 7 say the same thing.
+
+**Step 8 `--hard` then exposed a second honesty problem: recovery was not
+recoverable.** After `--hard`, `sudo ./scripts/setup.sh <ip>` left
+`/etc/restic/exclude` in place and left the empty snapshot as `latest`, so
+setup's own step 9 drill ended in `DIFFERENT - Only in /srv/data: conf,
+uploads` and `failed: the restore did not match /srv/data`, with no
+explanation of why - the script sabotaged by another script could not undo
+it. `setup_node1` now removes a leftover exclude file, runs `restic unlock`
+when a lock exists, and after counting snapshots checks whether `latest`
+actually contains anything under `/srv/data`, taking a fresh backup when it
+does not. `break-and-fix.sh --hard` now prints the whole repair (four lines:
+`rm` the exclude, reinstall the `.prehard` unit, `daemon-reload`,
+`unlock && run && drill`) and says plainly that restoring the unit alone
+leaves the empty snapshot as `latest`, and that failure 4's lock keeps
+`no stale lock is holding the repository` red until it is cleared. The README
+step 8 section carries the same four lines and states that `18 passed, 4
+failed` is the correct score for a still-broken day, not a defect.
+
+**`$!` was expanded by the wrong shell (2026-09-15).** The PID-kill fix in
+failure 4 was written as `run "restic backup ... & BPID=$!; ..."`. Double
+quotes mean the OUTER script expands `$!` before `run` ever passes the string
+to `bash -c`, and with `set -u` and no background job of its own that is
+`line 105: $!: unbound variable` - break-and-fix.sh died halfway through the
+day. The command is now single-quoted so the inner `bash -c` does the
+expansion, with only `$DATA` interpolated from outside. Lesson: when you
+build a command as a string, decide deliberately which shell expands each
+variable.
+
+**Verify was reporting its own lock (2026-09-15).** After the orphan was
+killed, the repository was provably clean - `lab-backup unlock` removed one
+lock and said `no locks left`, a backup ran, `restic check` printed `no errors
+were found` - and `verify.sh` still failed only `no stale lock is holding the
+repository`. Cause: the lock check sat *after* `the repository passes an
+integrity check`, and `restic check` takes an EXCLUSIVE lock (`create
+exclusive lock for repository` is in its own output). Over sftp that lock is
+still visible when the next command runs, so verify was reporting a lock it
+had taken itself. The lock check is now the first repository check, before
+anything that locks. `lab-backup unlock` also prints `restic cat lock <id>`
+for each lock, naming the host and pid that wrote it. Lesson: a check must
+not measure a side effect of the checks above it.
+
+**The lock had a live owner - the real bug in failure 4 (2026-09-15).**
+Hardware showed `19 passed, 3 failed`: the stale lock, `the repository passes
+an integrity check`, and `the scheduled service has run and exited 0`. All
+three were one cause. `break-and-fix.sh` failure 4 killed the backup with
+`kill -9 %1` inside `run()`, which runs `bash -c` - job control is off in a
+non-interactive shell, so the jobspec can fail to match and the backup keeps
+running as an orphan, refreshing its lock every few minutes. A lock with a
+living owner is not stale, survives `unlock`, and is re-taken immediately
+after `--remove-all`; meanwhile `restic check` refuses (it wants the
+repository to itself) and every timer run exits 1. Fixes: failure 4 now
+captures `$!` and kills by PID, then checks `pgrep -f 'restic backup'` and
+`pkill -9` any survivor; the `--remove-all` branch prints `pgrep -af restic`
+first and says a returning lock means a live owner; `lab-backup unlock`
+refuses to escalate while a restic process is running on the host and prints
+it; README gained a `When a lock will not go away` section with the
+three-red-lines table and the `pgrep`/`pkill`/unlock/run/check recovery.
+Lesson: never kill a background job by jobspec in a script, and a lock that
+returns is never stale.
+
+**Verify was racing its own timer (2026-09-15).** After the lock check was
+fixed to count IDs, hardware still failed it, and a hand repair at 15:51 also
+failed `at least one snapshot exists`. Both were real and neither was a
+repair problem: the timer is `OnCalendar=*:0/10`, so a scheduled backup
+starts at every tenth minute and `forget --prune` takes an EXCLUSIVE lock -
+which makes `restic snapshots --json` fail and leaves a live lock in
+`restic list locks`. Verify ran seconds after the :50 trigger both times.
+`verify.sh` now waits for `restic-backup.service` to go inactive before any
+repository check, and the lock check retries for ten seconds so a lock from a
+run that has just exited is not called stale. README: `lab-backup unlock` was
+removed from the step 7 command list (there is nothing to unlock before step
+8, and two unlocks in one day read as a contradiction), the step 8 hand
+repair is now a numbered four-step list explaining why the exclude file is
+first and the backup last, step 9 explains the waiting line, and setup's
+closing block labels its commands `step 6` to `step 9` so the script and the
+README agree. Lesson: a check that talks to a shared resource must account
+for the schedule the same day installs.
+
+**The lock check itself was the bug (2026-09-15).** After the unlock
+escalation shipped, hardware still showed `21 passed, 1 failed` with only
+`no stale lock is holding the repository` red, while `lab-backup unlock`
+printed `no locks left` - both by hand and through setup. Neither was wrong:
+`restic list locks` writes a blank line before its list, so
+`restic list locks | wc -l` returns 1 with zero locks, and the check could
+never pass. `verify.sh` now counts lock IDs
+(`grep -cE '^[0-9a-f]{8,}$'`) instead of lines. Every other caller already
+used `grep -q .` / `grep -c .`, which is why only verify lied. Lesson
+repeated for the third time this day: a check that has never once passed on
+hardware is not a check.
+
+**Step 7 on hardware found the bug this whole day is supposed to teach, in
+my own code.** `lab-backup status` said `last run exit : 1`, and the journal
+said why: `unable to locate cache directory: neither $XDG_CACHE_HOME nor
+$HOME are defined`, twice, at 08:33 and 08:40. A systemd service has no
+`HOME`, and restic derives its cache directory from `HOME` or
+`XDG_CACHE_HOME`, so every scheduled run failed while every run by hand
+succeeded - the exact "works by hand, not on the timer" failure the README
+lectures about, shipped live. The unit now carries `Environment=HOME=/root`
+and `Environment=RESTIC_CACHE_DIR=/var/cache/restic`, and setup creates
+`/var/cache/restic` 0700 root. Two more real defects from the same screen:
+`sudo lab-backup` returned `command not found` because `sudo` uses
+`secure_path` from `/etc/sudoers`, which on Rocky omits `/usr/local/bin`, so
+setup now also symlinks `/usr/sbin/lab-backup`; and the README's
+`set -a; . /etc/restic/env; set +a` snippet cannot work as a normal user
+because that file is 0600 root-only, so it is now
+`sudo bash -c 'set -a; . /etc/restic/env; set +a; restic snapshots'`.
+`teardown.sh` removes the symlink and the cache. The verify check
+`the scheduled service has run and exited 0` also required strengthening: it
+read only `ExecMainStatus`, which is 0 for a unit that never ran, so it would
+have passed on this broken host; it now requires a non-empty
+`ExecMainStartTimestamp` too.
+
+**README restructured after the owner asked "The drill, What to actually look
+at - are they steps or not?"** They were steps, and nothing said so. The day
+now opens with a **whole day, in order** table: nine numbered steps, each with
+the host it runs on, plus the optional `--hard` and the teardown. Every section
+heading carries its number and host (`Step 6 - the drill, on node1`), the four
+setup invocations are Steps 2-5 rather than "passes", and the table states
+outright that **nothing runs on control except steps 2 and 4**. Also added the
+line explaining that `lab-backup` and `explore-backup.sh` correctly refuse
+before step 5 finishes (`sudo: lab-backup: command not found`,
+`no /etc/restic/env - run scripts/setup.sh first`), since the owner hit both
+while setup was still incomplete and could not tell a missing prerequisite
+from a broken script.
+
 ### Day 16 was written (2026-09-13)
 
 `days/day16/` now ships five scripts, a rewritten README and a twelve-check
@@ -2103,4 +2395,4 @@ tests/cli.sh                  4.2 KB   127 checks, no VM or root needed
 
 50 shell scripts, all `bash -n` clean. 20 days. Day 01 written and run for real
 on the lab; **Day 04 written and run end-to-end on `node1` (2026-09-08)**;
-Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Days 09-20 outstanding, except Days 11-19 which are written; Days 12 through 17 run green on hardware (Day 17: 19 passed, 0 failed, 2 to judge), Day 18 runs green on the owner's laptop with no VM (22 passed, 0 failed, 2 to judge) and Day 19 is written and not yet run. `tests/cli.sh`: 382 passed, 0 failed.
+Days 02, 03 and 05 written, never executed on a Rocky VM. Days 06, 07 and 08 written and never executed locally - they need no VM, but the authoring sandbox has no `ip` and no `unbound`, so CI is their first real run (Day 07's nameserver payload alone WAS run and works). Day 06 is green in CI; Day 07's first CI run failed on a missing prerequisite and was fixed by rebuilding it. Every day 01-20 is now written. Days 12 through 17 run green on hardware (Day 17: 19 passed, 0 failed, 2 to judge), Day 18 runs green on the owner's laptop with no VM (22 passed, 0 failed, 2 to judge), Day 19 runs green on node1 (22 passed, 0 failed, 2 to judge) and Day 20 is written and not yet run. `tests/cli.sh`: 397 passed, 0 failed.
